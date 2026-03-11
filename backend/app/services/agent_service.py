@@ -125,8 +125,9 @@ def build_system_prompt(config: MenuPlanConfig) -> str:
 7. 注意成本控制，单人餐标不得超出预算。
 8. 汤性要求必须与汤品标签匹配。
 
-## 输出格式 (严格 JSON)
-请直接输出以下格式的 JSON（不要任何其他文字），其中 dates 的 key 是 YYYY-MM-DD 格式的日期：
+## 输出格式 (严格 JSON，紧凑格式)
+请直接输出以下格式的 JSON（不要任何其他文字）。
+**重要：每道菜只需输出 id 和 name 两个字段，不需要输出其他属性（系统会自动补全）。**
 
 ```json
 {{
@@ -134,17 +135,7 @@ def build_system_prompt(config: MenuPlanConfig) -> str:
     "YYYY-MM-DD": {{
       "餐次名": {{
         "分类名": [
-          {{
-            "id": 菜品ID,
-            "name": "菜品名称",
-            "category": "分类",
-            "main_ingredients": ["食材1", "食材2"],
-            "process_type": "工艺",
-            "flavor": "口味",
-            "cost_per_serving": 单价,
-            "nutrition": {{"calories": 0, "protein": 0, "carbs": 0, "fat": 0}},
-            "tags": ["标签"]
-          }}
+          {{"id": 菜品ID, "name": "菜品名"}}
         ]
       }}
     }}
@@ -236,7 +227,8 @@ async def generate_menu_stream(
         # 解析 JSON
         parsed = _extract_json(raw_content)
         if parsed and "menu" in parsed:
-            menu_data = parsed["menu"]
+            # 关键步骤：用菜品库数据补全 LLM 返回的紧凑格式
+            menu_data = _enrich_menu_data(parsed["menu"])
             metrics_data = parsed.get("metrics", {
                 "total_cost": 0,
                 "avg_nutrition_score": 0,
@@ -290,6 +282,50 @@ def _extract_json(text: str) -> dict | None:
             pass
 
     return None
+
+
+# 构建菜品 ID → 完整数据的索引，用于快速补全
+_DISH_INDEX: dict[int, dict] = {d["id"]: d for d in DISH_LIBRARY}
+
+
+def _enrich_menu_data(menu: dict) -> dict:
+    """
+    将 LLM 返回的紧凑格式（只有 id + name）补全为前端需要的完整菜品数据。
+
+    为什么需要这一步：
+    LLM 输出一周完整菜品属性的 JSON 容易超过 max_tokens 导致截断。
+    因此让 LLM 只输出 {id, name}，后端根据 id 从菜品库中查找并补全
+    category/ingredients/nutrition 等完整属性。
+    """
+    enriched_menu: dict = {}
+    for date, meals in menu.items():
+        enriched_menu[date] = {}
+        for meal_name, categories in meals.items():
+            enriched_menu[date][meal_name] = {}
+            for cat_name, dishes in categories.items():
+                enriched_dishes = []
+                for dish in dishes:
+                    dish_id = dish.get("id")
+                    if dish_id and dish_id in _DISH_INDEX:
+                        # 从菜品库补全完整数据
+                        full_dish = dict(_DISH_INDEX[dish_id])
+                        enriched_dishes.append(full_dish)
+                    else:
+                        # 未找到对应 ID，保留 LLM 原始数据并补充默认值
+                        fallback = {
+                            "id": dish_id or 0,
+                            "name": dish.get("name", "未知菜品"),
+                            "category": cat_name,
+                            "main_ingredients": dish.get("main_ingredients", []),
+                            "process_type": dish.get("process_type", ""),
+                            "flavor": dish.get("flavor", ""),
+                            "cost_per_serving": dish.get("cost_per_serving", 0),
+                            "nutrition": dish.get("nutrition", {"calories": 0, "protein": 0, "carbs": 0, "fat": 0}),
+                            "tags": dish.get("tags", []),
+                        }
+                        enriched_dishes.append(fallback)
+                enriched_menu[date][meal_name][cat_name] = enriched_dishes
+    return enriched_menu
 
 
 def _sse_event(event_type: str, data: dict) -> str:
