@@ -1,0 +1,29 @@
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.env
+.venv/
+venv/
+
+# === Node ===
+node_modules/
+frontend/node_modules/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === 项目临时文件 ===
+prd_content.txt
+*.db
+*.sqlite3
