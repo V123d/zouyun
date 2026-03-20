@@ -9,6 +9,7 @@ import type {
     SceneType,
     AgentInfo,
 } from '../types';
+import type { HistoryRecord } from '../services/api';
 
 /** 生成默认的餐次配置 */
 function createDefaultMealConfig(name: string, id: string): MealConfig {
@@ -54,6 +55,7 @@ function getNextWeekRange(): { start_date: string; end_date: string } {
 interface AppState {
     /** 规则配置 */
     config: MenuPlanConfig;
+    setConfig: (config: MenuPlanConfig) => void;
     updateScene: (scene: SceneType) => void;
     updateCity: (city: string) => void;
     updateSchedule: (start: string, end: string) => void;
@@ -73,8 +75,19 @@ interface AppState {
     /** 菜单结果 */
     weeklyMenu: WeeklyMenu | null;
     setWeeklyMenu: (menu: WeeklyMenu) => void;
+    /** 移除单道菜品（支持通过 UI 删除） */
+    removeDish: (date: string, mealName: string, category: string, dishId: number) => void;
+    /** 增量合并单天菜单（流式生成时逐天调用） */
+    mergeWeeklyMenu: (date: string, meals: WeeklyMenu[string]) => void;
+    /** 移除某天菜单（约束校验不通过、准备重排时调用） */
+    removeDateFromMenu: (date: string) => void;
+    /** 清空整个菜单（新一轮生成前调用） */
+    clearWeeklyMenu: () => void;
     metrics: DashboardMetrics | null;
     setMetrics: (m: DashboardMetrics) => void;
+
+    historyRecords: HistoryRecord[];
+    setHistoryRecords: (records: HistoryRecord[]) => void;
 
     /** 智能体注册表 */
     agents: AgentInfo[];
@@ -121,6 +134,8 @@ export const useAppStore = create<AppState>((set) => ({
             createDefaultMealConfig('晚餐', 'meal-dinner'),
         ],
     },
+
+    setConfig: (config) => set({ config }),
 
     updateScene: (scene) =>
         set((s) => ({
@@ -208,8 +223,36 @@ export const useAppStore = create<AppState>((set) => ({
     // 菜单结果
     weeklyMenu: null,
     setWeeklyMenu: (menu) => set({ weeklyMenu: menu }),
+    removeDish: (date, mealName, category, dishId) => set((s) => {
+        if (!s.weeklyMenu) return {};
+        const updated = { ...s.weeklyMenu };
+        if (updated[date]?.[mealName]?.[category]) {
+            updated[date][mealName][category] = updated[date][mealName][category].filter(
+                (d) => d.id !== dishId
+            );
+        }
+        return { weeklyMenu: updated };
+    }),
+    mergeWeeklyMenu: (date, meals) =>
+        set((s) => ({
+            weeklyMenu: {
+                ...(s.weeklyMenu ?? {}),
+                [date]: meals,
+            },
+        })),
+    removeDateFromMenu: (date) =>
+        set((s) => {
+            if (!s.weeklyMenu) return {};
+            const updated = { ...s.weeklyMenu };
+            delete updated[date];
+            return { weeklyMenu: updated };
+        }),
+    clearWeeklyMenu: () => set({ weeklyMenu: null }),
     metrics: null,
     setMetrics: (m) => set({ metrics: m }),
+
+    historyRecords: [],
+    setHistoryRecords: (records) => set({ historyRecords: records }),
 
     // 智能体注册表
     agents: [],

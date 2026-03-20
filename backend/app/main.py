@@ -30,6 +30,7 @@ from .services import data_enrichment    # noqa: F401 — 数据补全智能体
 from .routers.chat_router import router as chat_router
 from .routers.agent_router import router as agent_router
 from .routers.dish_router import router as dish_router
+from .routers.menu_router import router as menu_router
 
 # 导入智能体注册表（用于菜品库数量展示）
 from .services.menu_generator import DISH_LIBRARY
@@ -65,46 +66,22 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(agent_router)
 app.include_router(dish_router)
+app.include_router(menu_router)
 
 
 # ============================================================
 # 占位 API — 待开发功能
 # ============================================================
 
-@app.get("/api/report/nutrition")
-async def report_nutrition():
-    """营养报告生成（待开发）"""
-    return NotImplementedResponse(message="营养报告生成功能正在开发中，敬请期待")
-
-
-@app.get("/api/report/recipe/{dish_id}")
-async def report_recipe(dish_id: int):
-    """定量配方查看（待开发）"""
-    return NotImplementedResponse(message=f"菜品(ID:{dish_id})的定量配方功能正在开发中")
-
-
 @app.post("/api/pricing/sync")
 async def pricing_sync():
     """生鲜时价同步（待开发）"""
     return NotImplementedResponse(message="生鲜时价同步接口正在对接中")
 
-
 @app.post("/api/inventory/sync")
 async def inventory_sync():
     """库存数据同步（待开发）"""
     return NotImplementedResponse(message="库存数据同步接口正在对接中")
-
-
-@app.post("/api/plan/save")
-async def plan_save():
-    """保存排餐计划（待开发）"""
-    return NotImplementedResponse(message="排餐计划保存功能正在开发中")
-
-
-@app.get("/api/plan/{plan_id}")
-async def plan_detail(plan_id: int):
-    """获取排餐计划详情（待开发）"""
-    return NotImplementedResponse(message=f"排餐计划(ID:{plan_id})详情功能正在开发中")
 
 
 # ============================================================

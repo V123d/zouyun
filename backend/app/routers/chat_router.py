@@ -20,7 +20,7 @@ async def chat_send(request: ChatRequest):
     以 Server-Sent Events 格式流式返回思考进度和菜单结果。
     """
     return StreamingResponse(
-        orchestrate_menu_stream(request.message, request.config),
+        orchestrate_menu_stream(request.message, request.config, request.current_menu),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

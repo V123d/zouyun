@@ -1,26 +1,42 @@
 /* ========== API 调用服务层 ========== */
-import type { MenuPlanConfig, ChatMessage, WeeklyMenu, DashboardMetrics, DishInfo, AgentInfo } from '../types';
+import type { MenuPlanConfig, WeeklyMenu, DashboardMetrics, DishInfo, AgentInfo } from '../types';
 
 const API_BASE = '/api';
+
+/** 约束告警项结构 */
+export interface ConstraintAlert {
+    type: string;
+    date: string;
+    meal_name: string;
+    category: string;
+    dish_name: string;
+    detail: string;
+}
 
 /** 发送排菜指令（SSE 流式返回） */
 export async function sendChatMessage(
     userMessage: string,
     config: MenuPlanConfig,
+    currentMenu: WeeklyMenu | null,
     onThinkingStep: (step: { label: string; status: string; detail?: string }) => void,
     onContent: (content: string) => void,
     onMenuResult: (menu: WeeklyMenu, metrics: DashboardMetrics) => void,
     onDone: () => void,
-    onError: (error: string) => void
+    onError: (error: string) => void,
+    onMenuUpdate?: (date: string, meals: WeeklyMenu[string]) => void,
+    onMenuRemove?: (date: string) => void,
+    onConstraintAlert?: (date: string, alerts: ConstraintAlert[], attempt: number) => void,
 ): Promise<void> {
     try {
+        const bodyObj: any = { message: userMessage, config };
+        if (currentMenu) {
+            bodyObj.current_menu = currentMenu;
+        }
+
         const response = await fetch(`${API_BASE}/chat/send`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                message: userMessage,
-                config,
-            }),
+            body: JSON.stringify(bodyObj),
         });
 
         if (!response.ok) {
@@ -58,7 +74,26 @@ export async function sendChatMessage(
                                 onContent(parsed.content);
                                 break;
                             case 'menu_result':
-                                onMenuResult(parsed.menu, parsed.metrics);
+                                onMenuResult(parsed.menu, {
+                                    ...parsed.metrics,
+                                    alerts: parsed.alerts ?? [],
+                                });
+                                break;
+                            case 'menu_update':
+                                // 逐天增量填充日历看板
+                                onMenuUpdate?.(parsed.date, parsed.meals);
+                                break;
+                            case 'menu_partial_update':
+                                // 流式生成增量渲染
+                                onMenuUpdate?.(parsed.date, parsed.meals);
+                                break;
+                            case 'menu_remove':
+                                // 约束校验不通过，移除旧菜品（触发消失动画）
+                                onMenuRemove?.(parsed.date);
+                                break;
+                            case 'constraint_alert':
+                                // 约束校验的具体不合格项
+                                onConstraintAlert?.(parsed.date, parsed.alerts, parsed.attempt ?? 1);
                                 break;
                             case 'error':
                                 onError(parsed.message);
@@ -123,5 +158,47 @@ export async function getAgentRegistry(): Promise<AgentInfo[]> {
     } catch {
         return [];
     }
+}
+
+/** 重新计算菜单指标 */
+export async function recalculateMetrics(menu: WeeklyMenu, config: MenuPlanConfig): Promise<{ success: boolean; metrics: DashboardMetrics }> {
+    const res = await fetch(`${API_BASE}/menu/recalculate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ menu, config }),
+    });
+    if (!res.ok) throw new Error('重新计算失败');
+    return await res.json();
+}
+
+export interface HistoryRecord {
+    id: string;
+    name: string;
+    timestamp: string;
+    metrics: DashboardMetrics;
+}
+
+export async function saveMenuHistory(menu: WeeklyMenu, metrics: DashboardMetrics, config: MenuPlanConfig, name?: string): Promise<{ success: boolean; id: string }> {
+    const res = await fetch(`${API_BASE}/menu/history`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ menu, metrics, config, name }),
+    });
+    if (!res.ok) throw new Error('保存历史记录失败');
+    return await res.json();
+}
+
+export async function getHistoryList(): Promise<HistoryRecord[]> {
+    const res = await fetch(`${API_BASE}/menu/history`);
+    if (!res.ok) throw new Error('获取历史记录失败');
+    const data = await res.json();
+    return data.records || [];
+}
+
+export async function getHistoryDetail(id: string): Promise<{ menu: WeeklyMenu; metrics: DashboardMetrics; config: MenuPlanConfig }> {
+    const res = await fetch(`${API_BASE}/menu/history/${id}`);
+    if (!res.ok) throw new Error('获取详情失败');
+    const data = await res.json();
+    return data.data || {};
 }
 

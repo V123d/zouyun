@@ -96,9 +96,30 @@ class ChatRequest(BaseModel):
     """对话请求"""
     message: str
     config: MenuPlanConfig
+    current_menu: Optional[dict] = None
 
 
 class NotImplementedResponse(BaseModel):
     """待开发功能响应"""
     status: str = "not_implemented"
     message: str
+
+
+class ConstraintAlert(BaseModel):
+    """结构化约束校验告警"""
+    type: str  # 例如："COUNT_MISMATCH", "RED_LINE", "BUDGET_OVERFLOW", "DUPLICATE", "CROSS_MEAL_DUPLICATE"
+    date: str
+    meal_name: str
+    category: str = ""
+    dish_name: str = ""
+    detail: str
+
+
+class CheckMetrics(BaseModel):
+    """校验指标汇总"""
+    total_cost: float
+    avg_nutrition_score: float
+    repeat_rate: float
+    alert_count: int
+    total_dishes: int
+    unique_dishes: int

@@ -1,52 +1,81 @@
 """
 走云智能排菜系统 — 意图解析智能体
 
-职责：接收用户自然语言指令 + 结构化配置 JSON，解析出排菜意图。
+职责：接收用户自然语言指令 + 结构化配置 JSON，解析出排菜意图摘要。
 输出：结构化的排菜需求 JSON。
 """
-import json
 import logging
 from typing import Any
+from pydantic import BaseModel, Field
 
 from openai import AsyncOpenAI
 import httpx
 
 from ..config import LLM_API_URL, LLM_API_KEY, LLM_MODEL
 from .base_agent import BaseAgent
+from .utils import extract_json
 
 logger = logging.getLogger(__name__)
 
-# LLM 客户端（与其他 LLM 智能体共享配置，但逻辑独立）
 _client = AsyncOpenAI(
     api_key=LLM_API_KEY,
     base_url=LLM_API_URL,
     timeout=httpx.Timeout(60.0, connect=10.0),
 )
 
-INTENT_SYSTEM_PROMPT = """你是走云智能排菜系统的意图解析智能体。你的唯一任务是：
-将用户的自然语言排菜指令，结合提供的结构化配置信息，解析为标准化的排菜需求摘要。
+class DailyOverride(BaseModel):
+    flavor: str = Field(default="", description="当日整体口味偏好，如清淡、辣")
+    preferred_ingredients: list[str] = Field(default_factory=list, description="当日偏好食材")
+    avoid_ingredients: list[str] = Field(default_factory=list, description="当日避开食材")
+    special_requests: list[str] = Field(default_factory=list, description="当日其他特殊限定要求")
 
-你必须严格输出以下 JSON 格式（不要附加任何其他文字）：
-```json
+class MealOverride(BaseModel):
+    target: str = Field(description="目标餐次，格式为 '星期几-餐次名'，如 '星期一-午餐' 或全局的 '午餐'")
+    category_changes: dict[str, int] = Field(default_factory=dict, description="分类数量绝对值修改，如 {'汤': 0, '荤菜': 2} 代表不喝汤，荤菜变2个")
+    budget_override: float | None = Field(default=None, description="特定餐次预算修改")
+
+class RegenerateTarget(BaseModel):
+    date: str = Field(description="目标日期，格式为 YYYY-MM-DD")
+    meal_name: str = Field(description="目标餐次，例如 '早餐', '午餐', '晚餐'")
+
+class ParsedIntentDef(BaseModel):
+    action: str = Field(default="生成菜单", description="当前意图类型")
+    summary: str = Field(description="一句话总结用户核心诉求")
+    global_preferences: list[str] = Field(default_factory=list, description="全局偏好关键词")
+    budget_override: float | None = Field(default=None, description="全局预算覆盖")
+    include_weekends: bool = Field(default=False, description="是否显式要求包含周末")
+    daily_overrides: dict[str, DailyOverride] = Field(default_factory=dict, description="按天特别定制，key严格为星期一、星期二等")
+    meal_overrides: list[MealOverride] = Field(default_factory=list, description="对具体某餐的分类或规则修改")
+    regenerate_targets: list[RegenerateTarget] = Field(default_factory=list, description="局部修改时需要彻底重新生成的特定日期和餐次")
+
+# 精简 prompt，减少 token 消耗
+INTENT_SYSTEM_PROMPT = """你是排菜系统的意图解析智能体。将用户排菜指令解析为标准摘要，并支持强大的局部系统规则覆写（Mutation）。
+严格输出如下结构的 JSON（无其他文字），如果有不需要填写的字段，保留为空列表/空对象/null：
 {
   "parsed_intent": {
     "action": "生成菜单",
-    "period": {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"},
-    "target_meals": ["午餐", "晚餐"],
-    "special_preferences": ["降温驱寒", "高蛋白"],
+    "summary": "一句话总结用户的核心诉求",
+    "global_preferences": ["降温驱寒", "高蛋白"],
     "budget_override": null,
-    "ingredient_preferences": {"preferred": ["鸡肉"], "avoided": ["猪肉"]},
-    "summary": "一句话总结用户意图"
+    "include_weekends": false,
+    "daily_overrides": {
+      "星期一": {"flavor": "清淡", "preferred_ingredients": [], "avoid_ingredients": [], "special_requests": []}
+    },
+    "meal_overrides": [
+      {"target": "星期三-午餐", "category_changes": {"汤": 0, "荤菜": 2}, "budget_override": null}
+    ],
+    "regenerate_targets": [
+      {"date": "2026-03-24", "meal_name": "晚餐"}
+    ]
   }
 }
-```
 
-注意：
-- period / target_meals 从配置中提取
-- special_preferences 从用户自然语言中提取偏好关键词
-- budget_override 仅当用户明确提出新预算时填写（数字），否则为 null
-- ingredient_preferences 从用户语言中提取食材偏好
-"""
+说明：
+- global_preferences：全局口味或偏好
+- daily_overrides：针对特定星期几的独立要求，键名严格为 "星期一" 等。
+- meal_overrides：修改特定餐次结构。target 为 "午餐" (全局) 或 "星期三-晚餐" (特定天)。category_changes 表示将指定分类的数量强行改为某个数值（如设为0即删除该分类）。
+- include_weekends：如果用户明示要排每一天、包含周末或七天等，设为 true。
+- regenerate_targets：若上下文中已存在菜单且用户要求修改某一天/某一餐的内容（如“把明天的晚餐换一下”），请在此精确指出需要重新生成的日期和餐次（若未指明餐次则默认全天所有餐次逐一列出）。为空列表则表示全量重新排餐或未指定。"""
 
 
 class IntentParserAgent(BaseAgent):
@@ -54,7 +83,7 @@ class IntentParserAgent(BaseAgent):
 
     agent_id = "intent-parser"
     agent_name = "Intent Parser / 意图解析智能体"
-    agent_description = "将用户自然语言排菜指令解析为结构化排菜需求，提取排餐周期、目标餐次、特殊偏好、预算要求和食材偏好"
+    agent_description = "将用户自然语言排菜指令解析为结构化排菜需求，提取特殊偏好、预算要求和食材偏好"
     agent_type = "llm"
 
     async def execute(self, **kwargs: Any) -> dict[str, Any]:
@@ -63,18 +92,18 @@ class IntentParserAgent(BaseAgent):
 
         Args:
             user_message: 用户自然语言消息
-            config_json:  结构化配置 JSON 字符串
+            config_json:  结构化配置 JSON 字符串（用于获取周期、餐次等上下文）
 
         Returns:
-            包含 parsed_intent 的字典
+            {success: bool, parsed_intent: dict}
         """
         user_message: str = kwargs.get("user_message", "")
         config_json: str = kwargs.get("config_json", "{}")
+        current_menu_json: str = kwargs.get("current_menu_json", "")
 
-        user_prompt = (
-            f"用户指令：{user_message}\n\n"
-            f"当前配置：\n{config_json}"
-        )
+        user_prompt = f"用户指令：{user_message}\n当前配置（摘要）：{config_json[:500]}"
+        if current_menu_json:
+            user_prompt += f"\n当前已有完整菜单（局部修改参考，请根据需求推导需重新生成的日期）：\n{current_menu_json[:1500]}"
 
         try:
             response = await _client.chat.completions.create(
@@ -83,45 +112,33 @@ class IntentParserAgent(BaseAgent):
                     {"role": "system", "content": INTENT_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.3,
-                max_tokens=1000,
+                temperature=0.2,
+                max_tokens=500,  # 意图解析输出短，无需大 token 限制
             )
             raw = response.choices[0].message.content or ""
-            parsed = _extract_json(raw)
+            parsed = extract_json(raw)
             if parsed and "parsed_intent" in parsed:
-                return {"success": True, **parsed}
+                try:
+                    intent_obj = ParsedIntentDef(**parsed["parsed_intent"])
+                    return {"success": True, "parsed_intent": intent_obj.model_dump()}
+                except Exception as valid_e:
+                    logger.warning(f"Intent validation fallback: {valid_e}")
+                    return {"success": True, **parsed}
             else:
+                # 解析失败降级：直接使用用户原始消息作为 summary
                 return {
                     "success": True,
                     "parsed_intent": {
                         "action": "生成菜单",
                         "summary": user_message,
-                        "special_preferences": [],
+                        "global_preferences": [],
                         "budget_override": None,
-                        "ingredient_preferences": {"preferred": [], "avoided": []},
+                        "include_weekends": False,
+                        "daily_overrides": {},
+                        "meal_overrides": [],
+                        "regenerate_targets": [],
                     },
                 }
         except Exception as e:
             logger.exception("Intent parser failed")
             return {"success": False, "error": str(e)}
-
-
-def _extract_json(text: str) -> dict | None:
-    """从 LLM 返回文本中提取 JSON 对象"""
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = [line for line in lines if not line.strip().startswith("```")]
-        text = "\n".join(lines)
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        try:
-            return json.loads(text[start: end + 1])
-        except json.JSONDecodeError:
-            pass
-    return None

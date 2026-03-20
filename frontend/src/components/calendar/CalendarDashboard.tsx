@@ -1,5 +1,5 @@
 /* ========== 周菜单日历看板 (Calendar Dashboard) ========== */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
     DollarSign,
     Heart,
@@ -10,14 +10,17 @@ import {
     FileText,
     Search,
     X,
+    Download,
+    Clock
 } from 'lucide-react';
 import { useAppStore } from '../../stores/app-store';
 import { getDateRange, getWeekdayLabel, formatDateShort } from '../../utils/date';
-import { showNotImplemented, searchDishes } from '../../services/api';
+import { searchDishes, recalculateMetrics, saveMenuHistory } from '../../services/api';
 import type { DishInfo } from '../../types';
+import { PreviewModal, NutritionModal, HistoryModal, RecipeModal } from './MenuModals';
 
 export default function CalendarDashboard() {
-    const { config, weeklyMenu, metrics, setWeeklyMenu } = useAppStore();
+    const { config, weeklyMenu, metrics, setWeeklyMenu, setMetrics, removeDish } = useAppStore();
     const enabledMeals = config.meals_config.filter((m) => m.enabled);
     const dates = getDateRange(
         config.context_overview.schedule.start_date,
@@ -43,7 +46,69 @@ export default function CalendarDashboard() {
         }
     };
 
-    const handleAddDish = (dish: DishInfo) => {
+    // 局部状态用于控制消失动画
+    const [displayMenu, setDisplayMenu] = useState<typeof weeklyMenu>(null);
+    const [removingDates, setRemovingDates] = useState<Set<string>>(new Set());
+
+    // 模态弹框状态
+    const [previewOpen, setPreviewOpen] = useState(false);
+    const [nutritionOpen, setNutritionOpen] = useState(false);
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [recipeDish, setRecipeDish] = useState<any | null>(null);
+
+    useEffect(() => {
+        if (!weeklyMenu) {
+            setDisplayMenu(null);
+            setRemovingDates(new Set());
+            return;
+        }
+
+        // 检查是否有被移除的日期（需播放退出动画）
+        if (displayMenu) {
+            const newlyRemoved = new Set<string>();
+            Object.keys(displayMenu).forEach((date) => {
+                if (!weeklyMenu[date] && !removingDates.has(date)) {
+                    newlyRemoved.add(date);
+                }
+            });
+
+            if (newlyRemoved.size > 0) {
+                setRemovingDates(prev => new Set([...prev, ...newlyRemoved]));
+                
+                // 等待动画完成后正式从展示区移除
+                setTimeout(() => {
+                    setDisplayMenu((prev) => {
+                        if (!prev) return prev;
+                        const next = { ...prev };
+                        newlyRemoved.forEach(d => delete next[d]);
+                        return next;
+                    });
+                    setRemovingDates((prev) => {
+                        const next = new Set(prev);
+                        newlyRemoved.forEach(d => next.delete(d));
+                        return next;
+                    });
+                }, 280);
+            }
+        }
+
+        // 同步新加入的日期
+        setDisplayMenu((prev) => {
+            const next = prev ? { ...prev } : {};
+            let changed = false;
+            Object.keys(weeklyMenu).forEach(date => {
+                if (next[date] !== weeklyMenu[date]) {
+                    next[date] = weeklyMenu[date];
+                    changed = true;
+                }
+            });
+            // 只有当有新增或修改的内容时才触发更新渲染
+            return changed ? next : prev;
+        });
+
+    }, [weeklyMenu]);
+
+    const handleAddDish = async (dish: DishInfo) => {
         if (!searchTarget || !weeklyMenu) return;
         const { date, meal, category } = searchTarget;
         const updated = { ...weeklyMenu };
@@ -56,6 +121,45 @@ export default function CalendarDashboard() {
         ];
         setWeeklyMenu(updated);
         setSearchOpen(false);
+
+        // 重新测算指标
+        try {
+            const res = await recalculateMetrics(updated, config);
+            if (res.success) setMetrics(res.metrics);
+        } catch (e) {
+            console.error("Recalculate failed", e);
+        }
+    };
+
+    const handleRemoveDish = async (e: React.MouseEvent, date: string, mealName: string, category: string, dishId: number) => {
+        e.stopPropagation();
+        if (!weeklyMenu) return;
+        
+        // 计算新的菜单状态
+        const updated = { ...weeklyMenu };
+        if (updated[date]?.[mealName]?.[category]) {
+            updated[date][mealName][category] = updated[date][mealName][category].filter((d) => d.id !== dishId);
+        }
+        
+        removeDish(date, mealName, category, dishId);
+        
+        // 重新测算
+        try {
+            const res = await recalculateMetrics(updated, config);
+            if (res.success) setMetrics(res.metrics);
+        } catch (err) {
+            console.error("Recalculate failed", err);
+        }
+    };
+
+    const handleSaveHistory = async () => {
+        if (!weeklyMenu || !metrics) return alert("暂无完整菜单或指标，无法保存");
+        try {
+            await saveMenuHistory(weeklyMenu, metrics, config);
+            alert("✅ 排餐结果已成功保存到历史记录！");
+        } catch (err) {
+            alert("保存历史记录失败");
+        }
     };
 
     const openSearch = (date: string, meal: string, category: string) => {
@@ -67,8 +171,8 @@ export default function CalendarDashboard() {
 
     /** 获取某个单元格中的菜品 */
     const getCellDishes = (date: string, mealName: string, categoryName: string): DishInfo[] => {
-        if (!weeklyMenu) return [];
-        return weeklyMenu[date]?.[mealName]?.[categoryName] || [];
+        if (!displayMenu) return [];
+        return displayMenu[date]?.[mealName]?.[categoryName] || [];
     };
 
     return (
@@ -81,18 +185,30 @@ export default function CalendarDashboard() {
                         {config.context_overview.schedule.start_date.slice(5)} ~ {config.context_overview.schedule.end_date.slice(5)}
                     </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                     <button
-                        onClick={() => showNotImplemented('预览完整菜单')}
+                        onClick={() => setPreviewOpen(true)}
                         className="px-3 py-1.5 text-xs font-medium text-primary-600 bg-primary-50 rounded-lg hover:bg-primary-100 transition-colors flex items-center gap-1"
                     >
                         <Eye size={12} /> 预览完整菜单
                     </button>
                     <button
-                        onClick={() => showNotImplemented('营养报告')}
+                        onClick={() => setNutritionOpen(true)}
                         className="px-3 py-1.5 text-xs font-medium text-accent-600 bg-accent-50 rounded-lg hover:bg-accent-100 transition-colors flex items-center gap-1"
                     >
                         <FileText size={12} /> 营养报告
+                    </button>
+                    <button
+                        onClick={handleSaveHistory}
+                        className="px-3 py-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors flex items-center gap-1"
+                    >
+                        <Download size={12} /> 保存记录
+                    </button>
+                    <button
+                        onClick={() => setHistoryOpen(true)}
+                        className="px-3 py-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors flex items-center gap-1"
+                    >
+                        <Clock size={12} /> 历史记录
                     </button>
                 </div>
             </div>
@@ -178,21 +294,29 @@ export default function CalendarDashboard() {
                                                 >
                                                     {dishes.length > 0 ? (
                                                         <div className="space-y-1">
-                                                            {dishes.map((dish, i) => (
-                                                                <div
-                                                                    key={i}
-                                                                    className={`px-2 py-1.5 rounded-lg text-[11px] cursor-pointer transition-all hover:shadow-sm ${dish.is_manual_added
-                                                                            ? 'bg-warm-50 border border-warm-200 text-warm-700'
-                                                                            : 'bg-primary-50/70 border border-primary-100 text-primary-700'
-                                                                        }`}
-                                                                    onClick={() => showNotImplemented('菜品定量配方')}
-                                                                    title={`${dish.name}\n工艺: ${dish.process_type}\n成本: ¥${dish.cost_per_serving}`}
-                                                                >
-                                                                    <p className="font-medium truncate">{dish.name}</p>
-                                                                    <p className="text-[9px] text-text-muted mt-0.5">
-                                                                        ¥{dish.cost_per_serving} · {dish.process_type}
-                                                                    </p>
-                                                                </div>
+                                                            {dishes.map((dish) => (
+                                                                    <div
+                                                                        key={`${dish.id}-${dish.name}`}
+                                                                        className={`px-2 py-1.5 rounded-lg text-[11px] cursor-pointer transition-all hover:shadow-sm relative group/dish ${
+                                                                            removingDates.has(d) ? 'animate-dish-exit' : 'animate-dish-enter'
+                                                                        } ${dish.is_manual_added
+                                                                                ? 'bg-warm-50 border border-warm-200 text-warm-700'
+                                                                                : 'bg-primary-50/70 border border-primary-100 text-primary-700'
+                                                                            }`}
+                                                                        onClick={() => setRecipeDish(dish)}
+                                                                        title={`${dish.name}\n工艺: ${dish.process_type}\n成本: ¥${dish.cost_per_serving}`}
+                                                                    >
+                                                                        <button 
+                                                                            onClick={(e) => handleRemoveDish(e, d, meal.meal_name, cat.name, dish.id)}
+                                                                            className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/dish:opacity-100 bg-red-100 text-red-500 hover:bg-red-500 hover:text-white rounded-full p-0.5 transition-all shadow-sm z-10"
+                                                                        >
+                                                                            <X size={10} />
+                                                                        </button>
+                                                                        <p className="font-medium truncate">{dish.name}</p>
+                                                                        <p className="text-[9px] text-text-muted mt-0.5">
+                                                                            ¥{dish.cost_per_serving} · {dish.process_type}
+                                                                        </p>
+                                                                    </div>
                                                             ))}
                                                         </div>
                                                     ) : (
@@ -277,6 +401,12 @@ export default function CalendarDashboard() {
                     </div>
                 </>
             )}
+
+            {/* 新功能弹窗 */}
+            <PreviewModal isOpen={previewOpen} onClose={() => setPreviewOpen(false)} />
+            <NutritionModal isOpen={nutritionOpen} onClose={() => setNutritionOpen(false)} />
+            <HistoryModal isOpen={historyOpen} onClose={() => setHistoryOpen(false)} />
+            <RecipeModal isOpen={!!recipeDish} onClose={() => setRecipeDish(null)} dish={recipeDish} />
         </div>
     );
 }

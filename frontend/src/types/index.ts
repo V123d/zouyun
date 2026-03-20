@@ -144,6 +144,7 @@ export interface DashboardMetrics {
     avg_nutrition_score: number;
     repeat_rate: number;
     alert_count: number;
+    alerts?: string[];
 }
 
 /** 对话消息角色 */

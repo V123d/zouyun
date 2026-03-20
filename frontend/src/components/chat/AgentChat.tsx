@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Sparkles, Settings2, CheckCircle2, Loader2, AlertCircle, Bot, User } from 'lucide-react';
 import { useAppStore } from '../../stores/app-store';
 import { sendChatMessage } from '../../services/api';
+import type { ConstraintAlert } from '../../services/api';
 import { generateId } from '../../utils/date';
 import type { ThinkingStep } from '../../types';
 
@@ -26,8 +27,12 @@ export default function AgentChat() {
         isGenerating,
         setIsGenerating,
         config,
+        weeklyMenu,
         setWeeklyMenu,
         setMetrics,
+        mergeWeeklyMenu,
+        removeDateFromMenu,
+        clearWeeklyMenu,
         setConfigDrawerOpen,
     } = useAppStore();
 
@@ -69,21 +74,32 @@ export default function AgentChat() {
             thinking_steps: thinkingSteps,
         });
         setIsGenerating(true);
+        // 记录在清空前抓取的当前菜单状态，以便后端只做局部修改
+        const currentMenuContext = weeklyMenu;
+        
+        // 生成前先清空上轮菜单，准备流式填充（UI表现）
+        clearWeeklyMenu();
 
         let accumulatedContent = '';
 
         await sendChatMessage(
             text,
             config,
+            currentMenuContext,
             // onThinkingStep
             (step) => {
+                // 使用包含匹配，兼容后端动态附加日期后缀的 label（如 "约束校验 (2026-03-23)"）
+                const matchLabel = (existing: string, incoming: string) =>
+                    existing === incoming || incoming.startsWith(existing);
                 updateMessage(agentMsgId, {
                     thinking_steps: thinkingSteps.map((s) =>
-                        s.label === step.label ? { ...s, status: step.status as ThinkingStep['status'], detail: step.detail } : s
+                        matchLabel(s.label, step.label)
+                            ? { ...s, status: step.status as ThinkingStep['status'], detail: step.detail }
+                            : s
                     ),
                 });
                 // 更新本地引用
-                const idx = thinkingSteps.findIndex((s) => s.label === step.label);
+                const idx = thinkingSteps.findIndex((s) => matchLabel(s.label, step.label));
                 if (idx >= 0) {
                     thinkingSteps[idx] = { ...thinkingSteps[idx], status: step.status as ThinkingStep['status'], detail: step.detail };
                 }
@@ -112,7 +128,27 @@ export default function AgentChat() {
                     ),
                 });
                 setIsGenerating(false);
-            }
+            },
+            // onMenuUpdate: 逐天增量填充日历看板
+            (date, meals) => {
+                mergeWeeklyMenu(date, meals);
+            },
+            // onMenuRemove: 约束不通自动清除旧菜单，触发消失动画
+            (date) => {
+                removeDateFromMenu(date);
+            },
+            // onConstraintAlert: 显示具体不合格项
+            (date, alerts: ConstraintAlert[], attempt) => {
+                const alertsText = alerts.map(a => `[${a.type}] ${a.dish_name || a.category}: ${a.detail}`).join('；');
+                const detail = `⚠️ ${date} 第${attempt}轮检查发现: ${alertsText}`;
+                updateMessage(agentMsgId, {
+                    thinking_steps: thinkingSteps.map((s) =>
+                        s.label === '约束校验'
+                            ? { ...s, status: 'error' as const, detail }
+                            : s
+                    ),
+                });
+            },
         );
     };
 
@@ -211,9 +247,20 @@ export default function AgentChat() {
                                             <span className="text-text-secondary">菜品重复率</span>
                                             <span className="font-semibold text-warm-600">{msg.metrics.repeat_rate}%</span>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-text-secondary">约束告警</span>
-                                            <span className="font-semibold text-red-500">{msg.metrics.alert_count}项</span>
+                                        <div className="flex flex-col">
+                                            <div className="flex justify-between">
+                                                <span className="text-text-secondary">约束告警</span>
+                                                <span className={`font-semibold ${msg.metrics.alert_count > 0 ? 'text-red-500' : 'text-primary-700'}`}>
+                                                    {msg.metrics.alert_count > 0 ? `${msg.metrics.alert_count}项` : '全部通过 ✓'}
+                                                </span>
+                                            </div>
+                                            {msg.metrics.alert_count > 0 && msg.metrics.alerts && msg.metrics.alerts.length > 0 && (
+                                                <div className="mt-1.5 space-y-0.5 pl-1 border-l-2 border-red-200">
+                                                    {msg.metrics.alerts.map((alertText, i) => (
+                                                        <p key={i} className="text-[10px] text-red-500 leading-relaxed">• {alertText}</p>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
