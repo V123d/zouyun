@@ -4,20 +4,36 @@
 处理 /api/dishes/* 相关请求。
 """
 from fastapi import APIRouter
-from ..services.data_enrichment import search_dishes, DISH_LIBRARY
+from sqlalchemy import select
+from ..services.data_enrichment import search_dishes
+from ..database import AsyncSessionLocal
+from ..models.dish import Dish
 
 router = APIRouter(prefix="/api/dishes", tags=["菜品库"])
-
 
 @router.get("/search")
 async def dishes_search(q: str = ""):
     """搜索菜品库"""
     if not q.strip():
         return []
-    return search_dishes(q.strip())
-
+    return await search_dishes(q.strip())
 
 @router.get("/library")
 async def dishes_library():
     """获取完整菜品库"""
-    return DISH_LIBRARY
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Dish))
+        dishes = result.scalars().all()
+        return [
+            {
+                "id": d.id,
+                "name": d.name,
+                "category": d.category,
+                "main_ingredients": d.main_ingredients,
+                "process_type": d.process_type,
+                "flavor": d.flavor,
+                "cost_per_serving": d.cost_per_serving,
+                "nutrition": d.nutrition,
+                "tags": d.tags,
+            } for d in dishes
+        ]

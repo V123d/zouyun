@@ -11,10 +11,21 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# 日志配置
+import os
+
+# ==============================================================
+# 生产级日志配置
+# ==============================================================
+os.makedirs("logs", exist_ok=True)
+from logging.handlers import RotatingFileHandler
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        RotatingFileHandler("logs/app.log", maxBytes=10*1024*1024, backupCount=5, encoding="utf-8"),
+        logging.StreamHandler()
+    ]
 )
 
 # ==============================================================
@@ -31,9 +42,9 @@ from .routers.chat_router import router as chat_router
 from .routers.agent_router import router as agent_router
 from .routers.dish_router import router as dish_router
 from .routers.menu_router import router as menu_router
+from .routers.auth_router import router as auth_router
 
-# 导入智能体注册表（用于菜品库数量展示）
-from .services.menu_generator import DISH_LIBRARY
+# 导入智能体注册表
 from .services.base_agent import AgentRegistry
 from .schemas.chat_schema import NotImplementedResponse
 
@@ -53,20 +64,41 @@ app = FastAPI(
     ),
 )
 
+import os
+from fastapi.responses import JSONResponse
+from fastapi.requests import Request
+
 # CORS 配置
+allowed_origins_str = os.environ.get("ALLOWED_ORIGINS", "*")
+allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")] if allowed_origins_str != "*" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 全局异常拦截器
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logging.error(f"Global exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False, 
+            "message": "服务器内部错误，请稍后再试", 
+            "detail": str(exc) if os.environ.get("DEBUG") == "True" else None
+        }
+    )
 
 # 挂载路由
 app.include_router(chat_router)
 app.include_router(agent_router)
 app.include_router(dish_router)
 app.include_router(menu_router)
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 
 
 # ============================================================
@@ -91,10 +123,18 @@ async def inventory_sync():
 @app.get("/api/health")
 async def health_check():
     """健康检查 — 展示系统状态和已注册智能体数量"""
+    from .database import AsyncSessionLocal
+    from .models.dish import Dish
+    from sqlalchemy import select, func
+    
+    async with AsyncSessionLocal() as session:
+        res = await session.execute(select(func.count(Dish.id)))
+        dish_count = res.scalar() or 0
+        
     agents = AgentRegistry.list_all()
     return {
         "status": "ok",
-        "dish_count": len(DISH_LIBRARY),
+        "dish_count": dish_count,
         "agent_count": len(agents),
         "agents": [a["id"] for a in agents],
     }

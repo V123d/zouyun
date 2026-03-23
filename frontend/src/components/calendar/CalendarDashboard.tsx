@@ -243,8 +243,8 @@ export default function CalendarDashboard() {
 
             {/* 日历网格 */}
             <div className="flex-1 px-5 pb-4 overflow-auto">
-                <div className="bg-white rounded-xl border border-border-light shadow-sm overflow-hidden">
-                    <table className="w-full border-collapse text-xs">
+                <div className="bg-white rounded-xl border border-border-light shadow-sm overflow-x-auto">
+                    <table className="w-full min-w-max border-collapse text-xs">
                         <thead>
                             <tr className="bg-gradient-to-r from-primary-50 to-accent-50">
                                 <th className="px-3 py-2.5 text-left font-semibold text-text-secondary border-b border-r border-border-light w-16">

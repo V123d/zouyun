@@ -113,7 +113,7 @@ async def node_check(state: dict) -> AsyncGenerator[str, None]:
         state["passed"] = False
         return
         
-    check_result = _check_menu({date_str: day_menu}, state["config_dict"])
+    check_result = await _check_menu({date_str: day_menu}, state["config_dict"])
     day_alerts = check_result.get("alerts", [])
     
     if day_alerts:
@@ -168,7 +168,7 @@ async def node_enrich(state: dict) -> AsyncGenerator[str, None]:
             "status": "running",
             "detail": "正在获取完整菜品工艺与排菜数据",
         }})
-        enriched_day = _enrich_menu_data({date_str: day_menu})
+        enriched_day = await _enrich_menu_data({date_str: day_menu})
         state["day_menu"] = enriched_day.get(date_str, day_menu)
         # 再推一次带完整 detail 的 update
         yield sse("menu_update", {"date": date_str, "meals": state["day_menu"]})
@@ -449,7 +449,7 @@ async def orchestrate_menu_stream(
 
         for global_attempt in range(MAX_GLOBAL_RETRIES + 1):
             daily_configs_dict_only = {k: v["config_dict"] for k,v in daily_configs.items()}
-            final_check = _check_menu(full_menu, config_dict, daily_configs_dict_only)
+            final_check = await _check_menu(full_menu, config_dict, daily_configs_dict_only)
             global_alerts = [
                 a for a in final_check.get("alerts", [])
                 if a.get("type") in GLOBAL_RETRY_TYPES
@@ -545,7 +545,7 @@ async def orchestrate_menu_stream(
                     day_menu = parsed_fallback.get("meals") if parsed_fallback else None
                 
                 if day_menu:
-                    enriched = _enrich_menu_data({d: day_menu})
+                    enriched = await _enrich_menu_data({d: day_menu})
                     day_menu = enriched.get(d, day_menu)
 
                     full_menu[d] = day_menu
@@ -562,7 +562,7 @@ async def orchestrate_menu_stream(
                     }})
 
         daily_configs_dict_only = {k: v["config_dict"] for k,v in daily_configs.items()}
-        final_check = _check_menu(full_menu, config_dict, daily_configs_dict_only)
+        final_check = await _check_menu(full_menu, config_dict, daily_configs_dict_only)
         final_metrics = {
             "total_cost": final_check["metrics"].get("total_cost", 0),
             "avg_nutrition_score": final_check["metrics"].get("avg_nutrition_score", 0),

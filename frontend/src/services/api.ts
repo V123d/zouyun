@@ -1,7 +1,56 @@
 /* ========== API 调用服务层 ========== */
 import type { MenuPlanConfig, WeeklyMenu, DashboardMetrics, DishInfo, AgentInfo } from '../types';
+import { useAuthStore } from '../stores/auth-store';
 
 const API_BASE = '/api';
+
+/** 带鉴权的 fetch 拦截器 */
+async function fetchWithAuth(url: string, options: RequestInit = {}) {
+    const token = useAuthStore.getState().token;
+    const headers = new Headers(options.headers || {});
+    if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+        useAuthStore.getState().logout();
+        throw new Error("认证已过期，请重新登录");
+    }
+    return res;
+}
+
+/** 账号密码登录 */
+export async function login(username: string, password: string) {
+    const formData = new URLSearchParams();
+    formData.append('username', username);
+    formData.append('password', password);
+    const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData,
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw { response: { data: err } };
+    }
+    return res.json();
+}
+
+/** 账号注册 */
+export async function register(username: string, password: string) {
+    const res = await fetch(`${API_BASE}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw { response: { data: err } };
+    }
+    return res.json();
+}
 
 /** 约束告警项结构 */
 export interface ConstraintAlert {
@@ -34,7 +83,7 @@ export async function sendChatMessage(
             bodyObj.current_menu = currentMenu;
         }
 
-        const response = await fetch(`${API_BASE}/chat/send`, {
+        const response = await fetchWithAuth(`${API_BASE}/chat/send`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(bodyObj),
@@ -120,7 +169,7 @@ export async function sendChatMessage(
 /** 搜索菜品库 */
 export async function searchDishes(query: string): Promise<DishInfo[]> {
     try {
-        const res = await fetch(`${API_BASE}/dishes/search?q=${encodeURIComponent(query)}`);
+        const res = await fetchWithAuth(`${API_BASE}/dishes/search?q=${encodeURIComponent(query)}`);
         if (!res.ok) throw new Error('搜索失败');
         return await res.json();
     } catch {
@@ -131,7 +180,7 @@ export async function searchDishes(query: string): Promise<DishInfo[]> {
 /** 获取菜品库 */
 export async function getDishLibrary(): Promise<DishInfo[]> {
     try {
-        const res = await fetch(`${API_BASE}/dishes/library`);
+        const res = await fetchWithAuth(`${API_BASE}/dishes/library`);
         if (!res.ok) throw new Error('获取菜品库失败');
         return await res.json();
     } catch {
@@ -157,7 +206,7 @@ export function showNotImplemented(featureName: string): void {
 /** 获取智能体注册表（动态读取，新增智能体自动出现） */
 export async function getAgentRegistry(): Promise<AgentInfo[]> {
     try {
-        const res = await fetch(`${API_BASE}/agents`);
+        const res = await fetchWithAuth(`${API_BASE}/agents`);
         if (!res.ok) throw new Error('获取智能体注册表失败');
         const data = await res.json();
         return data.agents || [];
@@ -168,7 +217,7 @@ export async function getAgentRegistry(): Promise<AgentInfo[]> {
 
 /** 重新计算菜单指标 */
 export async function recalculateMetrics(menu: WeeklyMenu, config: MenuPlanConfig): Promise<{ success: boolean; metrics: DashboardMetrics }> {
-    const res = await fetch(`${API_BASE}/menu/recalculate`, {
+    const res = await fetchWithAuth(`${API_BASE}/menu/recalculate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ menu, config }),
@@ -185,7 +234,7 @@ export interface HistoryRecord {
 }
 
 export async function saveMenuHistory(menu: WeeklyMenu, metrics: DashboardMetrics, config: MenuPlanConfig, name?: string): Promise<{ success: boolean; id: string }> {
-    const res = await fetch(`${API_BASE}/menu/history`, {
+    const res = await fetchWithAuth(`${API_BASE}/menu/history`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ menu, metrics, config, name }),
@@ -195,14 +244,14 @@ export async function saveMenuHistory(menu: WeeklyMenu, metrics: DashboardMetric
 }
 
 export async function getHistoryList(): Promise<HistoryRecord[]> {
-    const res = await fetch(`${API_BASE}/menu/history`);
+    const res = await fetchWithAuth(`${API_BASE}/menu/history`);
     if (!res.ok) throw new Error('获取历史记录失败');
     const data = await res.json();
     return data.records || [];
 }
 
 export async function getHistoryDetail(id: string): Promise<{ menu: WeeklyMenu; metrics: DashboardMetrics; config: MenuPlanConfig }> {
-    const res = await fetch(`${API_BASE}/menu/history/${id}`);
+    const res = await fetchWithAuth(`${API_BASE}/menu/history/${id}`);
     if (!res.ok) throw new Error('获取详情失败');
     const data = await res.json();
     return data.data || {};

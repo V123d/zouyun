@@ -8,27 +8,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..config import DISH_LIBRARY_PATH
-
 logger = logging.getLogger(__name__)
 
-
-# ── 菜品库数据（全局加载一次） ──────────────────────────────────
-
-def _load_dish_library() -> list[dict[str, Any]]:
-    """从 JSON 文件加载菜品库"""
-    try:
-        with open(DISH_LIBRARY_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        logger.error(f"Failed to load dish library: {e}")
-        return []
-
-
-DISH_LIBRARY: list[dict[str, Any]] = _load_dish_library()
-
-DISH_INDEX: dict[int, dict[str, Any]] = {d["id"]: d for d in DISH_LIBRARY}
-"""菜品 ID → 完整数据的索引，用于快速查找和补全。"""
+# 已移除静态的 DISH_LIBRARY 和 DISH_INDEX，迁移至 SQLAlchemy。
 
 
 # ── JSON 提取 ────────────────────────────────────────────────

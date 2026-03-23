@@ -5,14 +5,16 @@
 """
 import logging
 from typing import Any
+from sqlalchemy import select
 
 from .base_agent import BaseAgent
-from .utils import DISH_INDEX, DISH_LIBRARY
+from ..database import AsyncSessionLocal
+from ..models.dish import Dish
 
 logger = logging.getLogger(__name__)
 
-# 重新导出 DISH_LIBRARY，保持对 dish_router.py 的兼容
-__all__ = ["DataEnrichmentAgent", "DISH_LIBRARY", "search_dishes"]
+# 重新导出 DataEnrichmentAgent 等，保持与之前接口一致
+__all__ = ["DataEnrichmentAgent", "search_dishes"]
 
 
 class DataEnrichmentAgent(BaseAgent):
@@ -24,36 +26,41 @@ class DataEnrichmentAgent(BaseAgent):
     agent_type = "rule"
 
     async def execute(self, **kwargs: Any) -> dict[str, Any]:
-        """
-        执行数据补全。
-
-        Args:
-            menu: 紧凑格式的菜单 JSON（{date: {meal: {category: [{id, name}]}}}）
-
-        Returns:
-            {success: bool, menu: 完整菜品数据的菜单 JSON}
-        """
         menu: dict = kwargs.get("menu", {})
-        enriched_menu = _enrich_menu_data(menu)
+        enriched_menu = await _enrich_menu_data(menu)
         return {"success": True, "menu": enriched_menu}
 
 
-def _enrich_menu_data(menu: dict) -> dict:
+async def _enrich_menu_data(menu: dict) -> dict:
     """
-    将 LLM 返回的紧凑格式补全为前端需要的完整菜品数据。
-
-    为什么需要这一步：
-    LLM 输出一周完整菜品属性的 JSON 容易超过 max_tokens 导致截断。
-    因此让 LLM 只输出 {id, name}，后端根据 id 从菜品库中查找并补全
-    category/ingredients/nutrition 等完整属性。
-    未命中的菜品 ID 保留 LLM 原始数据并填充默认值（防御性处理）。
-
-    Args:
-        menu: 紧凑格式菜单
-
-    Returns:
-        补全后的完整菜单
+    将 LLM 返回的紧凑格式补全为前端需要的完整菜品数据（异步从数据库查询）。
     """
+    dish_ids = set()
+    for date, meals in menu.items():
+        for meal_name, categories in meals.items():
+            for cat_name, dishes in categories.items():
+                for dish in dishes:
+                    if dish.get("id"):
+                        dish_ids.add(dish["id"])
+
+    dish_index = {}
+    if dish_ids:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Dish).where(Dish.id.in_(list(dish_ids))))
+            dishes_objs = result.scalars().all()
+            for d in dishes_objs:
+                dish_index[d.id] = {
+                    "id": d.id,
+                    "name": d.name,
+                    "category": d.category,
+                    "main_ingredients": d.main_ingredients,
+                    "process_type": d.process_type,
+                    "flavor": d.flavor,
+                    "cost_per_serving": d.cost_per_serving,
+                    "nutrition": d.nutrition,
+                    "tags": d.tags,
+                }
+
     enriched: dict = {}
     for date, meals in menu.items():
         enriched[date] = {}
@@ -63,8 +70,8 @@ def _enrich_menu_data(menu: dict) -> dict:
                 enriched_dishes = []
                 for dish in dishes:
                     dish_id = dish.get("id")
-                    if dish_id and dish_id in DISH_INDEX:
-                        enriched_dishes.append(dict(DISH_INDEX[dish_id]))
+                    if dish_id and dish_id in dish_index:
+                        enriched_dishes.append(dish_index[dish_id])
                     else:
                         # 未找到对应 ID，保留 LLM 原始数据并补充默认值
                         enriched_dishes.append({
@@ -84,27 +91,31 @@ def _enrich_menu_data(menu: dict) -> dict:
     return enriched
 
 
-def search_dishes(query: str) -> list[dict[str, Any]]:
+async def search_dishes(query: str) -> list[dict[str, Any]]:
     """
-    搜索菜品库（简单关键词匹配）。
-
-    保留此函数是为了维持与 dish_router.py 的兼容性。
-    实际数据来源委托给 utils.DISH_LIBRARY。
-
-    Args:
-        query: 搜索关键词
-
-    Returns:
-        最多 20 条匹配的菜品列表
+    搜索菜品库（数据库实现）。
     """
     query_lower = query.lower()
-    results = []
-    for dish in DISH_LIBRARY:
-        if (
-            query_lower in dish["name"].lower()
-            or any(query_lower in ing.lower() for ing in dish["main_ingredients"])
-            or any(query_lower in tag.lower() for tag in dish.get("tags", []))
-            or query_lower in dish.get("category", "").lower()
-        ):
-            results.append(dish)
-    return results[:20]
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Dish).where(
+                Dish.name.ilike(f"%{query_lower}%") |
+                Dish.category.ilike(f"%{query_lower}%") |
+                Dish.process_type.ilike(f"%{query_lower}%")
+            ).limit(20)
+        )
+        dishes = result.scalars().all()
+        
+        return [
+            {
+                "id": d.id,
+                "name": d.name,
+                "category": d.category,
+                "main_ingredients": d.main_ingredients,
+                "process_type": d.process_type,
+                "flavor": d.flavor,
+                "cost_per_serving": d.cost_per_serving,
+                "nutrition": d.nutrition,
+                "tags": d.tags,
+            } for d in dishes
+        ]

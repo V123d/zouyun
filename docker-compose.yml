@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: zouyun_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: zouyun_user
+      POSTGRES_PASSWORD: zouyun_password
+      POSTGRES_DB: zouyun_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - zouyun_network
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: zouyun_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      # 在这里配置大模型 API 密钥以及 JWT 秘钥（建议生产时通过 env 文件注入）
+      - LLM_API_KEY=${LLM_API_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secure-production-key-here}
+      # 接入旁边的 Postgres 容器，使用专门的 asyncpg 驱动
+      - DATABASE_URL=postgresql+asyncpg://zouyun_user:zouyun_password@db:5432/zouyun_db
+    volumes:
+      - ./backend/app/data:/app/app/data
+      - ./backend/logs:/app/logs
+    networks:
+      - zouyun_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: zouyun_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"  # 映射主机的 5173 以兼容目前的习惯，容器内部是 Nginx 80 端口
+    depends_on:
+      - backend
+    networks:
+      - zouyun_network
+
+networks:
+  zouyun_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

@@ -19,7 +19,7 @@ import httpx
 from ..config import LLM_API_URL, LLM_API_KEY, LLM_MODEL
 from ..schemas.chat_schema import MenuPlanConfig
 from .base_agent import BaseAgent
-from .utils import DISH_LIBRARY, extract_json, extract_partial_json
+from .utils import extract_json, extract_partial_json
 
 logger = logging.getLogger(__name__)
 
@@ -39,25 +39,25 @@ _client = AsyncOpenAI(
 )
 
 
-def build_filtered_dishes_text(red_lines: list[str], excluded_dishes: list[str]) -> str:
+def build_filtered_dishes_text(red_lines: list[str], excluded_dishes: list[str], all_dishes: list[Any]) -> str:
     """根据红线食材和排重列表动态构建菜品库文本"""
     red_lines_set = set(red_lines)
     excluded_set = set(excluded_dishes)
     dishes_by_category: dict[str, list[str]] = {}
     
-    for d in DISH_LIBRARY:
-        ingredients = d.get("main_ingredients", [])
+    for d in all_dishes:
+        ingredients = d.main_ingredients if isinstance(d.main_ingredients, list) else []
         if any(ing in red_lines_set for ing in ingredients):
             continue
-        if d["name"] in excluded_set:
+        if d.name in excluded_set:
             continue
             
-        cat = d.get("category", "其他")
+        cat = d.category or "其他"
         if cat not in dishes_by_category:
             dishes_by_category[cat] = []
-        tags_str = ",".join(d.get("tags", []))
+        tags_str = ",".join(d.tags) if isinstance(d.tags, list) else ""
         dishes_by_category[cat].append(
-            f'{d["name"]}(id:{d["id"]}, 工艺:{d["process_type"]}, 成本:¥{d["cost_per_serving"]}, 标签:[{tags_str}])'
+            f'{d.name}(id:{d.id}, 工艺:{d.process_type}, 成本:¥{d.cost_per_serving}, 标签:[{tags_str}])'
         )
         
     parts = []
@@ -69,6 +69,7 @@ def build_filtered_dishes_text(red_lines: list[str], excluded_dishes: list[str])
 def build_single_day_prompt(
     config: MenuPlanConfig,
     date: str,
+    all_dishes: list[Any],
     intent_summary: str = "",
     excluded_dishes: list[str] | None = None,
     retry_alerts: list[str] | None = None,
@@ -147,7 +148,7 @@ def build_single_day_prompt(
         )
 
     red_lines_list = config.global_hard_constraints.red_lines if config.global_hard_constraints.red_lines else []
-    filtered_dishes_text = build_filtered_dishes_text(red_lines_list, excluded_dishes or [])
+    filtered_dishes_text = build_filtered_dishes_text(red_lines_list, excluded_dishes or [], all_dishes)
 
     system_prompt = f"""你是走云智能排菜系统的菜单生成智能体。为 {date}（{weekday_str}）生成单天菜单。
 
@@ -279,9 +280,18 @@ class MenuGeneratorAgent(BaseAgent):
         retry_alerts: list[str] = kwargs.get("retry_alerts", [])
         locked_meals: dict | None = kwargs.get("locked_meals", None)
 
+        from ..database import AsyncSessionLocal
+        from sqlalchemy import select
+        from ..models.dish import Dish
+        
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Dish))
+            all_dishes = result.scalars().all()
+
         system_prompt = build_single_day_prompt(
             config=config,
             date=date,
+            all_dishes=all_dishes,
             intent_summary=intent_summary,
             excluded_dishes=excluded_dishes,
             retry_alerts=retry_alerts,
@@ -347,9 +357,18 @@ class MenuGeneratorAgent(BaseAgent):
         retry_alerts: list[str] = kwargs.get("retry_alerts", [])
         locked_meals: dict | None = kwargs.get("locked_meals", None)
 
+        from ..database import AsyncSessionLocal
+        from sqlalchemy import select
+        from ..models.dish import Dish
+        
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Dish))
+            all_dishes = result.scalars().all()
+
         system_prompt = build_single_day_prompt(
             config=config,
             date=date,
+            all_dishes=all_dishes,
             intent_summary=intent_summary,
             excluded_dishes=excluded_dishes,
             retry_alerts=retry_alerts,
