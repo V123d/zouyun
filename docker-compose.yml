@@ -1,4 +1,4 @@
-version: '3.8'
+name: zouyun
 
 services:
   db:
@@ -10,11 +10,34 @@ services:
       POSTGRES_PASSWORD: zouyun_password
       POSTGRES_DB: zouyun_db
     ports:
-      - "5432:5432"
+      - "45432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zouyun_user -d zouyun_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     networks:
       - zouyun_network
+
+  db-init:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: zouyun_db_init
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://zouyun_user:zouyun_password@db:5432/zouyun_db
+    volumes:
+      - ./backend/app/data:/app/app/data:ro
+    command: ["python", "init_db.py"]
+    networks:
+      - zouyun_network
+
   backend:
     build:
       context: ./backend
@@ -24,11 +47,16 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     environment:
       # 在这里配置大模型 API 密钥以及 JWT 秘钥（建议生产时通过 env 文件注入）
-      - LLM_API_KEY=${LLM_API_KEY}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secure-production-key-here}
+      - LLM_API_URL=${LLM_API_URL:http://llm_api:8000}
+      - LLM_API_KEY=${LLM_API_KEY:}
+      - LLM_MODEL=${LLM_MODEL:gpt-3.5-turbo}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:qYdSOQEnIQ7Varg1rTC5YBdCd3d5/3h7/++uv4hWY5M=}
       # 接入旁边的 Postgres 容器，使用专门的 asyncpg 驱动
       - DATABASE_URL=postgresql+asyncpg://zouyun_user:zouyun_password@db:5432/zouyun_db
     volumes:

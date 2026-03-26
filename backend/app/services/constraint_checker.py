@@ -58,7 +58,7 @@ async def _check_menu(menu: dict, config: Any, daily_configs: dict = None) -> di
                 for cat in mc.get("dish_structure", {}).get("categories", [])
             }
 
-    ALLOW_REPEAT_CATEGORIES: set[str] = {"汤", "主食", "面点类"}
+    ALLOW_REPEAT_CATEGORIES: set[str] = {"汤"}
     EVERY_OTHER_DAY_CATEGORIES: set[str] = {"素菜"}
     cross_day_tracker: dict[tuple[str, str], list[str]] = {}
 
@@ -255,13 +255,13 @@ async def _check_menu(menu: dict, config: Any, daily_configs: dict = None) -> di
                 for i in range(1, len(sorted_dates)):
                     d1 = date_cls.fromisoformat(sorted_dates[i-1])
                     d2 = date_cls.fromisoformat(sorted_dates[i])
-                    if (d2 - d1).days <= 3:
+                    if (d2 - d1).days < 5:
                         alerts.append(ConstraintAlert(
                             type="CROSS_DAY_DUPLICATE",
                             date=sorted_dates[i],
                             meal_name="",
                             dish_name=dish_name,
-                            detail=f"「{cat_name}」在 {sorted_dates[i-1]} 和 {sorted_dates[i]} 间隔过近重复出现"
+                            detail=f"「{cat_name}」在 {sorted_dates[i-1]} 和 {sorted_dates[i]} 间隔过近重复出现（要求间隔至少5天）"
                         ).model_dump())
                         break
 

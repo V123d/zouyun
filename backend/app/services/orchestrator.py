@@ -23,7 +23,7 @@ from .utils import sse, extract_json, extract_partial_json
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 2       # 单天校验不通过时的最大重排次数
+MAX_RETRIES = 1       # 单天校验不通过时的最大重排次数
 GROUP_SIZE = 1        # 每组并行的天数 (改为1消除排菜盲区)
 
 # ── 极简状态图实现 ──
@@ -439,16 +439,9 @@ async def orchestrate_menu_stream(
             excluded_dishes = set()
             target_date_obj = date_cls.fromisoformat(d)
             for prev_d, cat, d_name in selected_dishes_history:
-                prev_date_obj = date_cls.fromisoformat(prev_d)
-                diff_days = abs((target_date_obj - prev_date_obj).days)
                 if cat in {"汤"}:
                     continue
-                elif cat == "素菜":
-                    if diff_days <= 1:
-                        excluded_dishes.add(d_name)
-                else:
-                    if diff_days <= 3:
-                        excluded_dishes.add(d_name)
+                excluded_dishes.add(d_name)
 
             # 预筛选候选菜品：从全量菜品库中按结构需求选出 50~100 道
             day_config = daily_configs[d]["config"]
@@ -507,7 +500,7 @@ async def orchestrate_menu_stream(
     try:
         # ── 全局校验 + 重试循环 ────────────────────────────────────────
         GLOBAL_RETRY_TYPES = {"CROSS_DAY_DUPLICATE", "HIGH_REPEAT_RATE"}
-        MAX_GLOBAL_RETRIES = 2
+        MAX_GLOBAL_RETRIES = 1
 
         for global_attempt in range(MAX_GLOBAL_RETRIES + 1):
             daily_configs_dict_only = {k: v["config_dict"] for k,v in daily_configs.items()}
@@ -568,16 +561,9 @@ async def orchestrate_menu_stream(
                 current_retry_excluded = set()
                 target_date_obj = date_cls.fromisoformat(d)
                 for prev_d, cat, d_name in kept_history:
-                    prev_date_obj = date_cls.fromisoformat(prev_d)
-                    diff_days = abs((target_date_obj - prev_date_obj).days)
                     if cat in {"汤"}:
                         continue
-                    elif cat == "素菜":
-                        if diff_days <= 1:
-                            current_retry_excluded.add(d_name)
-                    else:
-                        if diff_days <= 3:
-                            current_retry_excluded.add(d_name)
+                    current_retry_excluded.add(d_name)
 
                 # 全局重排也走预筛选
                 retry_day_config = daily_configs[d]["config"]

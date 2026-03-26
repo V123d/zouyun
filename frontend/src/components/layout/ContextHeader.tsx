@@ -4,7 +4,7 @@ import { useAppStore } from '../../stores/app-store';
 
 export default function ContextHeader() {
     const { config } = useAppStore();
-    const { scene, city, schedule } = config.context_overview;
+    const { kitchen_class, city, schedule } = config.context_overview;
     const enabledMeals = config.meals_config.filter((m) => m.enabled);
 
     return (
@@ -22,7 +22,7 @@ export default function ContextHeader() {
             <div className="flex items-center gap-2 flex-wrap">
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary-50 text-primary-700 rounded-full text-xs font-medium">
                     <School size={12} />
-                    {scene}
+                    {kitchen_class}
                 </span>
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-accent-50 text-accent-700 rounded-full text-xs font-medium">
                     <MapPin size={12} />
