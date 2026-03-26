@@ -9,12 +9,14 @@ import AgentChat from './components/chat/AgentChat';
 import CalendarDashboard from './components/calendar/CalendarDashboard';
 import ConfigDrawer from './components/config-drawer/ConfigDrawer';
 import HistoryDrawer from './components/chat/HistoryDrawer';
+import DatabaseManager from './components/database/DatabaseManager';
 import { useState } from 'react';
-import { Clock } from 'lucide-react';
+import { Clock, Database } from 'lucide-react';
 
 function App() {
   const { token, user, logout } = useAuthStore();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [dbManagerOpen, setDbManagerOpen] = useState(false);
   const resetAll = useAppStore(state => state.resetAll);
 
   const handleLogout = () => {
@@ -45,6 +47,14 @@ function App() {
           >
             <Clock size={16} />
             历史对话
+          </button>
+          
+          <button
+            onClick={() => setDbManagerOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-text-secondary hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+          >
+            <Database size={16} />
+            数据库
           </button>
           
           <div className="flex items-center gap-2">
@@ -89,6 +99,9 @@ function App() {
       
       {/* 历史记录抽屉 */}
       <HistoryDrawer isOpen={historyOpen} onClose={() => setHistoryOpen(false)} />
+      
+      {/* 数据库管理面板 */}
+      <DatabaseManager isOpen={dbManagerOpen} onClose={() => setDbManagerOpen(false)} />
     </div>
   );
 }

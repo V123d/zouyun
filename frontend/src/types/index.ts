@@ -11,10 +11,16 @@ export type CostCalculationType = '按食材成本核算' | '按售价核算';
 
 /** 汤性要求 (已废弃) */
 
-/** 菜品分类结构 */
 export interface DishCategory {
     name: string;
     count: number;
+}
+
+/** 量化食材 */
+export interface IngredientQuantified {
+    name: string;
+    category: string;
+    amount_g: number;
 }
 
 /** 汤品要求 */
@@ -100,7 +106,7 @@ export interface DishInfo {
     id: number;
     name: string;
     category: string;
-    ingredients_quantified: any; // 或者更精确的 interface
+    ingredients_quantified: IngredientQuantified[];
     applicable_meals: string[];
     flavor: string;
     cost_per_serving: number;
@@ -112,6 +118,13 @@ export interface DishInfo {
     };
     tags: string[];
     is_manual_added?: boolean;
+}
+
+/** 灶别标准数据模型 */
+export interface StandardQuota {
+    id: number;
+    class_type: KitchenClass;
+    quotas: Record<string, number>;
 }
 
 /** 单日单格数据 — 日历看板中的单元格 */

@@ -43,6 +43,7 @@ from .routers.agent_router import router as agent_router
 from .routers.dish_router import router as dish_router
 from .routers.menu_router import router as menu_router
 from .routers.auth_router import router as auth_router
+from .routers.standard_quota_router import router as standard_quota_router
 
 # 导入智能体注册表
 from .services.base_agent import AgentRegistry
@@ -99,6 +100,7 @@ app.include_router(agent_router)
 app.include_router(dish_router)
 app.include_router(menu_router)
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(standard_quota_router)
 
 
 # ============================================================

@@ -155,8 +155,8 @@ async def _check_menu(menu: dict, config: Any, daily_configs: dict = None) -> di
                                 detail=f"含禁用食材「{ingredient}」"
                             ).model_dump())
 
-                    meal_cost_per_person += cost
-                    total_cost_raw += cost
+                    meal_cost_per_person += cost * 0.4
+                    total_cost_raw += cost * 0.4
 
                     if cat_name not in ALLOW_REPEAT_CATEGORIES:
                         dish_name_counter[dish_name] = dish_name_counter.get(dish_name, 0) + 1
@@ -328,7 +328,7 @@ def _calc_total_cost(menu: dict, meal_diners: dict[str, int], daily_configs: dic
                     dish_id = dish.get("id")
                     full = dish_index.get(dish_id, dish) if dish_id else dish
                     cost = float(full.get("cost_per_serving", 0))
-                    total += cost * diners
+                    total += cost * diners * 0.4
     return total
 
 

@@ -306,3 +306,87 @@ export async function deleteChatSession(sessionId: string): Promise<void> {
     if (!res.ok) throw new Error('删除会话失败');
 }
 
+// ==========================
+// 菜品库 CRUD 接口
+// ==========================
+
+import type { StandardQuota } from '../types';
+
+/** 创建新菜品 */
+export async function createDish(dish: Partial<DishInfo>): Promise<DishInfo> {
+    const res = await fetchWithAuth(`${API_BASE}/dishes/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dish),
+    });
+    if (!res.ok) throw new Error('创建菜品失败');
+    return await res.json();
+}
+
+/** 更新菜品 */
+export async function updateDish(id: number, dish: Partial<DishInfo>): Promise<DishInfo> {
+    const res = await fetchWithAuth(`${API_BASE}/dishes/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dish),
+    });
+    if (!res.ok) throw new Error('更新菜品失败');
+    return await res.json();
+}
+
+/** 删除菜品 */
+export async function deleteDish(id: number): Promise<void> {
+    const res = await fetchWithAuth(`${API_BASE}/dishes/${id}`, {
+        method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('删除菜品失败');
+}
+
+// ==========================
+// 灶别标准 CRUD 接口
+// ==========================
+
+/** 获取所有灶别标准 */
+export async function getStandardQuotas(): Promise<StandardQuota[]> {
+    try {
+        const res = await fetchWithAuth(`${API_BASE}/standard-quotas/`);
+        if (!res.ok) throw new Error('获取标准失败');
+        return await res.json();
+    } catch {
+        return [];
+    }
+}
+
+/** 创建新标准 */
+export async function createStandardQuota(quota: Partial<StandardQuota>): Promise<StandardQuota> {
+    const res = await fetchWithAuth(`${API_BASE}/standard-quotas/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(quota),
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || '创建标准失败');
+    }
+    return await res.json();
+}
+
+/** 更新标准 */
+export async function updateStandardQuota(id: number, quota: Partial<StandardQuota>): Promise<StandardQuota> {
+    const res = await fetchWithAuth(`${API_BASE}/standard-quotas/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(quota),
+    });
+    if (!res.ok) throw new Error('更新标准失败');
+    return await res.json();
+}
+
+/** 删除标准 */
+export async function deleteStandardQuota(id: number): Promise<void> {
+    const res = await fetchWithAuth(`${API_BASE}/standard-quotas/${id}`, {
+        method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('删除标准失败');
+}
+
