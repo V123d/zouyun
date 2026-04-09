@@ -752,14 +752,19 @@ INSERT INTO dishes VALUES(737,'荞麦面','主食','[{"name": "荞麦面", "cate
 INSERT INTO dishes VALUES(738,'五谷杂粮饭','主食','[{"name": "大米", "category": "大米", "amount_g": 150}, {"name": "糙米", "category": "大米", "amount_g": 50}, {"name": "燕麦", "category": "大米", "amount_g": 50}, {"name": "红豆", "category": "大豆", "amount_g": 50}]','["午餐", "晚餐"]','清香',4.0,'{"calories": 350, "protein": 12, "carbs": 70, "fat": 2}','["主食", "米饭", "粗粮"]');
 INSERT INTO dishes VALUES(739,'五香玉米红薯','主食','[{"name": "玉米", "category": "蔬菜", "amount_g": 200}, {"name": "红薯", "category": "蔬菜", "amount_g": 200}]','["早餐", "夜宵"]','香甜',4.5,'{"calories": 380, "protein": 8, "carbs": 80, "fat": 2}','["主食", "粗粮"]');
 CREATE TABLE standard_quotas (
-	id INTEGER NOT NULL, 
-	class_type VARCHAR(50) NOT NULL, 
-	quotas JSON NOT NULL, 
+	id INTEGER NOT NULL,
+	class_type VARCHAR(50) NOT NULL,
+	name VARCHAR(100) NOT NULL,
+	description VARCHAR(500) DEFAULT '',
+	quotas JSON NOT NULL,
+	quota_type VARCHAR(20) NOT NULL DEFAULT 'ingredient',
+	is_system BOOLEAN DEFAULT FALSE,
 	PRIMARY KEY (id)
 );
-INSERT INTO standard_quotas VALUES(1,'一类灶','{"\u5927\u7c73": 420, "\u9762\u7c89": 180, "\u755c\u8089": 180, "\u79bd\u8089": 60, "\u79bd\u86cb": 70, "\u9c7c\u867e": 90, "\u725b\u5976": 200, "\u5927\u8c46": 80, "\u8517\u7cd6": 30, "\u690d\u7269\u6cb9": 90, "\u852c\u83dc": 750, "\u6c34\u679c": 200, "\u98df\u7528\u83cc(\u5e72)": 5, "\u5e72\u83dc": 10}');
-INSERT INTO standard_quotas VALUES(2,'二类灶','{"\u5927\u7c73": 378.0, "\u9762\u7c89": 162.0, "\u755c\u8089": 162.0, "\u79bd\u8089": 54.0, "\u79bd\u86cb": 63.0, "\u9c7c\u867e": 81.0, "\u725b\u5976": 180.0, "\u5927\u8c46": 72.0, "\u8517\u7cd6": 27.0, "\u690d\u7269\u6cb9": 81.0, "\u852c\u83dc": 675.0, "\u6c34\u679c": 180.0, "\u98df\u7528\u83cc(\u5e72)": 4.5, "\u5e72\u83dc": 9.0}');
-INSERT INTO standard_quotas VALUES(3,'三类灶','{"\u5927\u7c73": 336.0, "\u9762\u7c89": 144.0, "\u755c\u8089": 144.0, "\u79bd\u8089": 48.0, "\u79bd\u86cb": 56.0, "\u9c7c\u867e": 72.0, "\u725b\u5976": 160.0, "\u5927\u8c46": 64.0, "\u8517\u7cd6": 24.0, "\u690d\u7269\u6cb9": 72.0, "\u852c\u83dc": 600.0, "\u6c34\u679c": 160.0, "\u98df\u7528\u83cc(\u5e72)": 4.0, "\u5e72\u83dc": 8.0}');
+INSERT INTO standard_quotas VALUES(1,'一类灶','一类灶（武警标准）','适用于武警部队一类伙食灶别，每日营养摄入参考标准', '{"大米": 420, "面粉": 180, "畜肉": 180, "禽肉": 60, "禽蛋": 70, "鱼虾": 90, "牛奶": 200, "大豆": 80, "蔗糖": 30, "植物油": 90, "鲜蔬菜": 750, "水果": 200, "食用菌(干)": 5, "干菜": 10}', 'ingredient', true);
+INSERT INTO standard_quotas VALUES(2,'二类灶','二类灶（武警标准）','适用于武警部队二类伙食灶别，每日营养摄入参考标准', '{"大米": 378.0, "面粉": 162.0, "畜肉": 162.0, "禽肉": 54.0, "禽蛋": 63.0, "鱼虾": 81.0, "牛奶": 180.0, "大豆": 72.0, "蔗糖": 27.0, "植物油": 81.0, "鲜蔬菜": 675.0, "水果": 180.0, "食用菌(干)": 4.5, "干菜": 9.0}', 'ingredient', true);
+INSERT INTO standard_quotas VALUES(3,'三类灶','三类灶（武警标准）','适用于武警部队三类伙食灶别，每日营养摄入参考标准', '{"大米": 336.0, "面粉": 144.0, "畜肉": 144.0, "禽肉": 48.0, "禽蛋": 56.0, "鱼虾": 72.0, "牛奶": 160.0, "大豆": 64.0, "蔗糖": 24.0, "植物油": 72.0, "鲜蔬菜": 600.0, "水果": 160.0, "食用菌(干)": 4.0, "干菜": 8.0}', 'ingredient', true);
+INSERT INTO standard_quotas VALUES(4,'营养值标准','营养值标准（参考）','基于中国居民膳食营养素参考摄入量，适用于轻体力成年男性参考标准。每日总能量摄入参考值：卡路里2400kcal、蛋白质75g、脂肪67g、碳水化合物360g。', '{"calories": 2400, "protein": 75, "fat": 67, "carbs": 360}', 'nutrition', true);
 CREATE TABLE users (
 	id INTEGER NOT NULL, 
 	username VARCHAR(50) NOT NULL, 
