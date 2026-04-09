@@ -276,9 +276,16 @@ export default function CalendarDashboard() {
                                                                             <X size={10} />
                                                                         </button>
                                                                         <p className="font-medium truncate">{(dish.name || '').replace(/_\d+$/, '')}</p>
-                                                                        <p className="text-[9px] text-text-muted mt-0.5">
-                                                                            {dish.flavor || '未知'}
-                                                                        </p>
+                                                                        <div className="flex items-center gap-1 mt-0.5">
+                                                                            <p className="text-[9px] text-text-muted">
+                                                                                {dish.flavor || '未知'}
+                                                                            </p>
+                                                                            {(dish as any).quantity && (
+                                                                                <span className="text-[9px] font-medium text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded">
+                                                                                    ×{(dish as any).quantity}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
                                                             ))}
                                                         </div>

@@ -56,7 +56,7 @@ export default function AuthPage({ onLoginSuccess }: { onLoginSuccess: () => voi
                     </div>
                 </div>
                 <h2 className="mt-6 text-center text-3xl font-extrabold text-text-primary">
-                    走云智能排菜系统
+                    膳云AI营养排菜
                 </h2>
                 <p className="mt-2 text-center text-sm text-text-muted">
                     {isLogin ? '欢迎回来，请登录您的账号' : '立即注册，开启智能排餐之旅'}

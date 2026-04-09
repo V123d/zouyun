@@ -36,6 +36,9 @@ export default function AgentChat() {
         setConfigDrawerOpen,
         setAbortController,
         stopGeneration,
+        setDailyQuotaCompliance,
+        clearDailyQuotaCompliance,
+        setCurrentQuotaType,
     } = useAppStore();
 
     const scrollToBottom = () => {
@@ -81,6 +84,7 @@ export default function AgentChat() {
         
         // 生成前先清空上轮菜单，准备流式填充（UI表现）
         clearWeeklyMenu();
+        clearDailyQuotaCompliance();
 
         const controller = new AbortController();
         setAbortController(controller);
@@ -165,6 +169,11 @@ export default function AgentChat() {
                             : s
                     ),
                 });
+            },
+            // onDailyQuotaUpdate: 每日营养配额达标数据（仅展示）
+            (date, quotaCompliance, quotaType) => {
+                setDailyQuotaCompliance(date, quotaCompliance);
+                if (quotaType) setCurrentQuotaType(quotaType);
             },
             controller.signal
         );

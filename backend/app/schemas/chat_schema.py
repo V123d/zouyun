@@ -16,16 +16,16 @@ class SoupRequirement(BaseModel):
     description: str = ""
 
 
-class DiningStyle(BaseModel):
-    """用餐方式"""
-    type: str = "固定餐标"
-    cost_type: Optional[str] = "按食材成本核算"
+class PersonalDishStructure(BaseModel):
+    """个人菜品结构：每人每餐各分类的菜品数量"""
+    categories: list[DishCategory] = Field(default_factory=list)
 
 
 class MealConstraints(BaseModel):
     """餐次约束"""
     required_ingredients: list[str] = Field(default_factory=list)
     mandatory_dishes: list[str] = Field(default_factory=list)
+    personal_dish_structure: PersonalDishStructure = Field(default_factory=PersonalDishStructure)
 
 
 class DishStructure(BaseModel):
@@ -41,7 +41,6 @@ class MealConfig(BaseModel):
     diners_count: int = 1000
     intake_rate: int = 60
     budget_per_person: float = 15.0
-    dining_style: DiningStyle = Field(default_factory=DiningStyle)
     meal_specific_constraints: MealConstraints = Field(default_factory=MealConstraints)
     dish_structure: DishStructure = Field(default_factory=DishStructure)
     staple_types: list[str] = Field(default_factory=list)
@@ -79,6 +78,7 @@ class Schedule(BaseModel):
 class ContextOverview(BaseModel):
     """上下文概览"""
     kitchen_class: str = "一类灶"
+    quota_profile_id: int = Field(default=1, description="选中的配额配置文件 ID，与 kitchen_class 对应")
     city: str = "广州市"
     schedule: Schedule
 

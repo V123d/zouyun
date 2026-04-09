@@ -8,6 +8,8 @@ import type {
     DashboardMetrics,
     KitchenClass,
     AgentInfo,
+    QuotaProfile,
+    QuotaCompliance,
 } from '../types';
 import type { HistoryRecord } from '../services/api';
 
@@ -53,6 +55,12 @@ function createDefaultMealConfig(name: string, id: string): MealConfig {
         ];
     }
 
+    // 个人菜品结构默认值：从食堂菜品结构中提取分类名，生成对应的个人配置
+    const personalCategories = categories.map(cat => ({
+        name: cat.name,
+        count: 1,
+    }));
+
     return {
         id,
         meal_name: name,
@@ -60,8 +68,11 @@ function createDefaultMealConfig(name: string, id: string): MealConfig {
         diners_count: 500,
         intake_rate: 60,
         budget_per_person: budget,
-        dining_style: { type: '固定餐标', cost_type: '按食材成本核算' },
-        meal_specific_constraints: { required_ingredients: [], mandatory_dishes: [] },
+        meal_specific_constraints: {
+            required_ingredients: [],
+            mandatory_dishes: [],
+            personal_dish_structure: { categories: personalCategories },
+        },
         dish_structure: { categories },
         staple_types: name === '早餐' ? ['包子', '饺子', '馒头'] : ['米饭'],
         soup_requirements: { description: '' },
@@ -88,6 +99,7 @@ interface AppState {
     config: MenuPlanConfig;
     setConfig: (config: MenuPlanConfig) => void;
     updateKitchenClass: (kitchen_class: KitchenClass) => void;
+    updateQuotaProfile: (profile_id: number, kitchen_class: string) => void;
     updateCity: (city: string) => void;
     updateSchedule: (start: string, end: string) => void;
     updateMealConfig: (mealId: string, updates: Partial<MealConfig>) => void;
@@ -95,6 +107,12 @@ interface AppState {
     addMeal: (name: string) => void;
     removeMeal: (mealId: string) => void;
     updateRedLines: (lines: string[]) => void;
+
+    /** 配额配置管理 */
+    quotaProfiles: QuotaProfile[];
+    setQuotaProfiles: (profiles: QuotaProfile[]) => void;
+    currentQuotaProfile: QuotaProfile | null;
+    setCurrentQuotaProfile: (profile: QuotaProfile | null) => void;
 
     /** 对话 */
     messages: ChatMessage[];
@@ -141,6 +159,15 @@ interface AppState {
 
     /** 退出登录时重置所有排菜相关状态 */
     resetAll: () => void;
+
+    /** 当前配额类型（ingredient=配料分类, nutrition=营养素） */
+    currentQuotaType: 'ingredient' | 'nutrition';
+    setCurrentQuotaType: (qt: 'ingredient' | 'nutrition') => void;
+
+    /** 每日营养配额达标数据 { date: quota_compliance[] } */
+    dailyQuotaCompliance: Record<string, QuotaCompliance[]>;
+    setDailyQuotaCompliance: (date: string, compliance: QuotaCompliance[]) => void;
+    clearDailyQuotaCompliance: () => void;
 }
 
 const schedule = getNextWeekRange();
@@ -148,8 +175,9 @@ const schedule = getNextWeekRange();
 export const useAppStore = create<AppState>((set) => ({
     config: {
         context_overview: {
-            kitchen_class: '一类灶' as KitchenClass,
-            city: '云南武警支队',
+            kitchen_class: '幼儿园大班营养摄入标准',
+            quota_profile_id: 4,
+            city: '春天花花幼儿园',
             schedule,
         },
         global_hard_constraints: {
@@ -185,6 +213,14 @@ export const useAppStore = create<AppState>((set) => ({
     updateKitchenClass: (kitchen_class) =>
         set((s) => ({
             config: { ...s.config, context_overview: { ...s.config.context_overview, kitchen_class } },
+        })),
+
+    updateQuotaProfile: (profile_id, kitchen_class) =>
+        set((s) => ({
+            config: {
+                ...s.config,
+                context_overview: { ...s.config.context_overview, quota_profile_id: profile_id, kitchen_class },
+            },
         })),
 
     updateCity: (city) =>
@@ -247,13 +283,19 @@ export const useAppStore = create<AppState>((set) => ({
             },
         })),
 
+    // 配额配置管理
+    quotaProfiles: [],
+    setQuotaProfiles: (profiles) => set({ quotaProfiles: profiles }),
+    currentQuotaProfile: null,
+    setCurrentQuotaProfile: (profile) => set({ currentQuotaProfile: profile }),
+
     // 对话
     messages: [
         {
             id: 'welcome',
             role: 'assistant',
             content:
-                '您好！我是走云智能排菜助手 🍽️ 请告诉我您的排餐需求，例如：\n\n"帮我排下周一到周五的菜单，要求严格控制大荤成本，并规避海鲜过敏原。"',
+                '您好！我是膳云AI营养排菜助手 🍽️ 请告诉我您的排餐需求，例如：\n\n"帮我排下周一到周五的菜单，要求严格控制大荤成本，并规避海鲜过敏原。"',
             timestamp: Date.now(),
         },
     ],
@@ -329,7 +371,7 @@ export const useAppStore = create<AppState>((set) => ({
                 id: 'welcome',
                 role: 'assistant',
                 content:
-                    '您好！我是走云智能排菜助手 🍽️ 请告诉我您的排餐需求，例如：\n\n"帮我排下周一到周五的菜单，要求严格控制大荤成本，并规避海鲜过敏原。"',
+                    '您好！我是膳云AI营养排菜助手 🍽️ 请告诉我您的排餐需求，例如：\n\n"帮我排下周一到周五的菜单，要求严格控制大荤成本，并规避海鲜过敏原。"',
                 timestamp: Date.now(),
             },
         ],
@@ -341,5 +383,19 @@ export const useAppStore = create<AppState>((set) => ({
         configDrawerOpen: false,
         isGenerating: false,
         abortController: null,
+        dailyQuotaCompliance: {},
+        currentQuotaType: 'ingredient',
     }),
+
+    // 当前配额类型
+    currentQuotaType: 'ingredient',
+    setCurrentQuotaType: (qt) => set({ currentQuotaType: qt }),
+
+    // 每日营养配额达标数据
+    dailyQuotaCompliance: {},
+    setDailyQuotaCompliance: (date, compliance) =>
+        set((s) => ({
+            dailyQuotaCompliance: { ...s.dailyQuotaCompliance, [date]: compliance },
+        })),
+    clearDailyQuotaCompliance: () => set({ dailyQuotaCompliance: {} }),
 }));

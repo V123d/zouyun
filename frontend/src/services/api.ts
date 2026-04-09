@@ -78,6 +78,7 @@ export async function sendChatMessage(
     onMenuUpdate?: (date: string, meals: WeeklyMenu[string]) => void,
     onMenuRemove?: (date: string) => void,
     onConstraintAlert?: (date: string, alerts: ConstraintAlert[], attempt: number) => void,
+    onDailyQuotaUpdate?: (date: string, quotaCompliance: any[], quotaType?: string) => void,
     abortSignal?: AbortSignal,
 ): Promise<void> {
     try {
@@ -149,6 +150,10 @@ export async function sendChatMessage(
                                 // 约束校验的具体不合格项
                                 onConstraintAlert?.(parsed.date, parsed.alerts, parsed.attempt ?? 1);
                                 break;
+                            case 'daily_quota_update':
+                                // 每日营养配额达标数据（仅展示，不阻断流程）
+                                onDailyQuotaUpdate?.(parsed.date, parsed.quota_compliance ?? [], parsed.quota_type);
+                                break;
                             case 'error':
                                 onError(parsed.message);
                                 break;
@@ -202,19 +207,30 @@ export async function getDishCategories(): Promise<string[]> {
     }
 }
 
-/** 通用待开发提示 */
-export function showNotImplemented(featureName: string): void {
-    // 使用简单的 toast 通知
-    const toast = document.createElement('div');
-    toast.className =
-        'fixed top-4 right-4 z-[9999] px-5 py-3 bg-warm-500 text-white rounded-xl shadow-lg animate-slide-up text-sm font-medium';
-    toast.textContent = `🚧 "${featureName}" 功能待开发`;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-        toast.style.transition = 'opacity 0.3s';
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-    }, 2500);
+/** 获取所有配料分类 */
+export async function getIngredientCategories(): Promise<string[]> {
+    try {
+        const res = await fetchWithAuth(`${API_BASE}/dishes/ingredient-categories`);
+        if (!res.ok) throw new Error('获取配料分类失败');
+        return await res.json();
+    } catch {
+        return [];
+    }
+}
+
+/** 添加新的菜品分类或配料分类 */
+export async function addCategory(categoryType: 'dish' | 'ingredient', categoryName: string): Promise<boolean> {
+    try {
+        const res = await fetchWithAuth(`${API_BASE}/dishes/categories`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category_type: categoryType, category_name: categoryName }),
+        });
+        if (!res.ok) throw new Error('添加分类失败');
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 /** 获取智能体注册表（动态读取，新增智能体自动出现） */
@@ -310,7 +326,7 @@ export async function deleteChatSession(sessionId: string): Promise<void> {
 // 菜品库 CRUD 接口
 // ==========================
 
-import type { StandardQuota } from '../types';
+import type { StandardQuota, QuotaProfile, QuotaProfileCreate } from '../types';
 
 /** 创建新菜品 */
 export async function createDish(dish: Partial<DishInfo>): Promise<DishInfo> {
@@ -343,22 +359,22 @@ export async function deleteDish(id: number): Promise<void> {
 }
 
 // ==========================
-// 灶别标准 CRUD 接口
+// 配额配置文件 CRUD 接口
 // ==========================
 
-/** 获取所有灶别标准 */
-export async function getStandardQuotas(): Promise<StandardQuota[]> {
+/** 获取所有配额配置文件 */
+export async function getQuotaProfiles(): Promise<QuotaProfile[]> {
     try {
         const res = await fetchWithAuth(`${API_BASE}/standard-quotas/`);
-        if (!res.ok) throw new Error('获取标准失败');
+        if (!res.ok) throw new Error('获取配额配置失败');
         return await res.json();
     } catch {
         return [];
     }
 }
 
-/** 创建新标准 */
-export async function createStandardQuota(quota: Partial<StandardQuota>): Promise<StandardQuota> {
+/** 创建新配额配置 */
+export async function createQuotaProfile(quota: QuotaProfileCreate): Promise<QuotaProfile> {
     const res = await fetchWithAuth(`${API_BASE}/standard-quotas/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -366,27 +382,36 @@ export async function createStandardQuota(quota: Partial<StandardQuota>): Promis
     });
     if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.detail || '创建标准失败');
+        throw new Error(err.detail || '创建配额配置失败');
     }
     return await res.json();
 }
 
-/** 更新标准 */
-export async function updateStandardQuota(id: number, quota: Partial<StandardQuota>): Promise<StandardQuota> {
+/** 更新配额配置 */
+export async function updateQuotaProfile(id: number, quota: Partial<QuotaProfileCreate>): Promise<QuotaProfile> {
     const res = await fetchWithAuth(`${API_BASE}/standard-quotas/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quota),
     });
-    if (!res.ok) throw new Error('更新标准失败');
+    if (!res.ok) throw new Error('更新配额配置失败');
     return await res.json();
 }
 
-/** 删除标准 */
-export async function deleteStandardQuota(id: number): Promise<void> {
+/** 删除配额配置 */
+export async function deleteQuotaProfile(id: number): Promise<void> {
     const res = await fetchWithAuth(`${API_BASE}/standard-quotas/${id}`, {
         method: 'DELETE',
     });
-    if (!res.ok) throw new Error('删除标准失败');
+    if (!res.ok) throw new Error('删除配额配置失败');
+}
+
+/** 复制配额配置 */
+export async function duplicateQuotaProfile(id: number, newName: string): Promise<QuotaProfile> {
+    const res = await fetchWithAuth(`${API_BASE}/standard-quotas/duplicate/${id}?new_name=${encodeURIComponent(newName)}`, {
+        method: 'POST',
+    });
+    if (!res.ok) throw new Error('复制配额配置失败');
+    return await res.json();
 }
 

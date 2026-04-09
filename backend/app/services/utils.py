@@ -5,12 +5,9 @@
 """
 import json
 import logging
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
-
-# 已移除静态的 DISH_LIBRARY 和 DISH_INDEX，迁移至 SQLAlchemy。
 
 
 # ── JSON 提取 ────────────────────────────────────────────────

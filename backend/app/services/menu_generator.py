@@ -25,6 +25,25 @@ from .utils import extract_json, extract_partial_json
 
 logger = logging.getLogger(__name__)
 
+
+def get_main_ingredient(dish) -> str | None:
+    """
+    从 ingredients_quantified 中提取主配料（amount_g 最大的那条记录的 name）。
+    用于主配料级别的跨天去重约束。
+    """
+    ingredients = getattr(dish, 'ingredients_quantified', []) or []
+    if not ingredients:
+        return None
+    best = None
+    best_amt = -1.0
+    for ing in ingredients:
+        amt = float(ing.get('amount_g') or ing.get('amount') or ing.get('value') or 0)
+        if amt > best_amt:
+            best_amt = amt
+            best = ing.get('name')
+    return best
+
+
 class DishItem(BaseModel):
     id: int
     name: str
@@ -46,6 +65,7 @@ def pre_filter_candidate_dishes(
     config: MenuPlanConfig,
     red_lines: list[str],
     excluded_dishes: list[str],
+    excluded_main_ingredients: dict[str, set[str]] | None = None,
 ) -> list[Any]:
     """
     按菜品结构从全量菜品库中预筛选出 50~100 道候选菜品，大幅降低提示词长度。
@@ -60,18 +80,26 @@ def pre_filter_candidate_dishes(
     2. 按 applicable_meals 匹配当天启用的餐次
     3. 按 dish_structure.categories 统计每个分类的需求量，取 4 倍候选
     4. 口味打散：从不同 flavor 中均匀选取，避免候选集口味单一
+    5. 主配料去重：主要品类下同一主配料本周不重复出现
 
     Args:
-        all_dishes:      数据库全量菜品 ORM 对象列表
-        config:          当天排餐配置
-        red_lines:       全局红线食材列表
-        excluded_dishes: 已在前几天排过的菜品名称列表（跨天去重）
+        all_dishes:                  数据库全量菜品 ORM 对象列表
+        config:                      当天排餐配置
+        red_lines:                   全局红线食材列表
+        excluded_dishes:             已在前几天排过的菜品名称列表（跨天去重）
+        excluded_main_ingredients:   已排过的主配料，格式 {category: {ingredient_name, ...}}
 
     Returns:
         筛选后的菜品 ORM 对象列表（50~100 道）
     """
     red_lines_set = set(red_lines)
     excluded_set = set(excluded_dishes)
+
+    # 小品类：品类少且可选余地小，不做主配料限制，且全量保留
+    FULL_INCLUDE_CATEGORIES: set[str] = {
+        "主食", "面点类", "汤羹类", "牛奶饮品类", "甜点糕点类",
+        "水果类", "咸菜腌菜类", "蛋类", "豆制品类", "菌菇类", "凉菜"
+    }
 
     # 统计当天各分类需求总量
     enabled_meals = [m for m in config.meals_config if m.enabled]
@@ -95,6 +123,15 @@ def pre_filter_candidate_dishes(
         # 跨天去重
         if dish.name in excluded_set:
             continue
+        # 跨主配料去重（主要品类下同一主配料本周不重复）
+        # 小品类（FULL_INCLUDE_CATEGORIES）品类少且可选余地小，不做主配料限制
+        if excluded_main_ingredients:
+            dish_cat = dish.category or "其他"
+            if dish_cat not in FULL_INCLUDE_CATEGORIES:
+                dish_main_ing = get_main_ingredient(dish)
+                if dish_main_ing and dish_cat in excluded_main_ingredients:
+                    if dish_main_ing in excluded_main_ingredients[dish_cat]:
+                        continue
         # 餐次匹配
         applicable = dish.applicable_meals if isinstance(dish.applicable_meals, list) else []
         if applicable and not enabled_meal_names.intersection(applicable):
@@ -110,12 +147,6 @@ def pre_filter_candidate_dishes(
     candidates: list[Any] = []
     selected_ids: set[int] = set()
     MULTIPLIER = 4  # 每个分类取需求量的 4 倍候选
-
-    # 小品类总数本就不多，全量保留不做采样
-    FULL_INCLUDE_CATEGORIES: set[str] = {
-        "主食", "面点类", "汤羹类", "牛奶饮品类", "甜点糕点类", 
-        "水果类", "咸菜腌菜类", "蛋类", "豆制品类", "菌菇类", "凉菜"
-    }
 
     for cat_name, demand_count in category_demand.items():
         pool = by_category.get(cat_name, [])
@@ -170,6 +201,18 @@ def pre_filter_candidate_dishes(
         if cat_name not in category_demand:
             sample_size = min(len(dishes), 6)
             for dish in random.sample(dishes, sample_size):
+                if dish.id not in selected_ids:
+                    candidates.append(dish)
+                    selected_ids.add(dish.id)
+
+    # 强制补充小品类（即使当天配置中未要求，也保留足够候选供大模型选择）
+    # 这确保主食、面包甜点等可选余地小的品类有足够候选
+    for cat_name in FULL_INCLUDE_CATEGORIES:
+        if cat_name in by_category and by_category[cat_name]:
+            pool = by_category[cat_name]
+            # 至少保留该分类的所有菜品，最多 12 道
+            sample_size = min(len(pool), 12)
+            for dish in random.sample(pool, sample_size):
                 if dish.id not in selected_ids:
                     candidates.append(dish)
                     selected_ids.add(dish.id)
@@ -241,6 +284,7 @@ def build_single_day_prompt(
     retry_alerts: list[str] | None = None,
     locked_meals: dict | None = None,
     standard_quota_str: str = "{}",
+    excluded_main_ingredients: dict[str, set[str]] | None = None,
 ) -> str:
     """
     构建单天菜单生成 Prompt。
@@ -250,11 +294,12 @@ def build_single_day_prompt(
     且多天可并行调用，总耗时从 ~60s 降至 ~15s。
 
     Args:
-        config:           完整排餐配置
-        date:             目标日期（YYYY-MM-DD）
-        intent_summary:   用户意图摘要
-        excluded_dishes:  已在其他天出现的菜品名称列表（用于跨天去重）
-        retry_alerts:     上一轮校验的不合格项（重试时携带，让 LLM 有针对性修正）
+        config:                    完整排餐配置
+        date:                      目标日期（YYYY-MM-DD）
+        intent_summary:            用户意图摘要
+        excluded_dishes:           已在其他天出现的菜品名称列表（用于跨天去重）
+        retry_alerts:              上一轮校验的不合格项（重试时携带，让 LLM 有针对性修正）
+        excluded_main_ingredients: 已排过的主配料 {category: {ingredient_name, ...}}，同类菜禁止重复
 
     Returns:
         System Prompt 字符串
@@ -292,6 +337,18 @@ def build_single_day_prompt(
             f"⚠️ 上述菜品已在其他天使用过，你必须从可选菜品库中选择未出现过的菜品。"
         )
 
+    excluded_main_ing_text = ""
+    if excluded_main_ingredients:
+        lines = []
+        for cat, ings in excluded_main_ingredients.items():
+            if ings:
+                lines.append(f"  - {cat}: {', '.join(sorted(ings))}")
+        if lines:
+            excluded_main_ing_text = (
+                f"\n## 已排过的主配料（本周同类菜已用过，同分类下绝对禁止选用含以下配料的菜品）\n"
+                + "\n".join(lines)
+            )
+
     retry_text = ""
     if retry_alerts:
         retry_text = (
@@ -326,6 +383,7 @@ def build_single_day_prompt(
 
 ## 饮食禁忌与重排反馈
 {excluded_text}
+{excluded_main_ing_text}
 {retry_text}
 {locked_text}
 ## 可选菜品库（已为您过滤掉红线和排重菜品，括号内提供了配料的克数详情）
@@ -343,16 +401,6 @@ def build_single_day_prompt(
 ⚠️ 分类名只使用纯名称如"主食"、"大荤"、"素菜"，绝对不要写成"主食×1"或"主食(需选1道)"。
 示例：{{"date": "{date}", "meals": {{"午餐": {{"大荤": [{{"id": 163, "name": "红烧肉圆"}}], "素菜": [{{"id": 507, "name": "清炒藕片"}}]}}}}}}"""
 
-    # 调试功能：将最后生成的 Prompt 写入本地文件，方便核对实际约束
-    import os
-    import datetime
-    debug_dir = os.path.join(os.path.dirname(__file__), "..", "..", "logs", "prompts")
-    os.makedirs(debug_dir, exist_ok=True)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    retry_suffix = "_retry" if retry_alerts else ""
-    with open(os.path.join(debug_dir, f"prompt_{date}_{timestamp}{retry_suffix}.txt"), "w", encoding="utf-8") as f:
-        f.write(system_prompt)
-        
     return system_prompt
 
 
@@ -448,10 +496,14 @@ class MenuGeneratorAgent(BaseAgent):
                 result = await session.execute(select(Dish))
                 all_dishes_raw = result.scalars().all()
                 
-                kitchen_class = config.context_overview.kitchen_class
+            quota_profile_id = config.context_overview.quota_profile_id
+            kitchen_class = config.context_overview.kitchen_class
+            sq_res = await session.execute(select(StandardQuota).where(StandardQuota.id == quota_profile_id))
+            sq = sq_res.scalars().first()
+            if not sq:
                 sq_res = await session.execute(select(StandardQuota).where(StandardQuota.class_type == kitchen_class))
                 sq = sq_res.scalars().first()
-                standard_quota_str = json.dumps(sq.quotas, ensure_ascii=False) if sq else "{}"
+            standard_quota_str = json.dumps(sq.quotas, ensure_ascii=False) if sq else "{}"
 
             red_lines = config.global_hard_constraints.red_lines or []
             candidate_dishes = pre_filter_candidate_dishes(
@@ -470,6 +522,7 @@ class MenuGeneratorAgent(BaseAgent):
             retry_alerts=retry_alerts,
             locked_meals=locked_meals,
             standard_quota_str=standard_quota_str,
+            excluded_main_ingredients=kwargs.get("excluded_main_ingredients"),
         )
 
         try:
@@ -484,7 +537,7 @@ class MenuGeneratorAgent(BaseAgent):
                 response_format={"type": "json_object"},
             )
             raw = response.choices[0].message.content or ""
-            
+
             # 使用 Pydantic 校验结果，确保结构安全
             try:
                 validated_model = DayMenuModel.model_validate_json(raw)
@@ -544,10 +597,14 @@ class MenuGeneratorAgent(BaseAgent):
                 result = await session.execute(select(Dish))
                 all_dishes_raw = result.scalars().all()
                 
-                kitchen_class = config.context_overview.kitchen_class
+            quota_profile_id = config.context_overview.quota_profile_id
+            kitchen_class = config.context_overview.kitchen_class
+            sq_res = await session.execute(select(StandardQuota).where(StandardQuota.id == quota_profile_id))
+            sq = sq_res.scalars().first()
+            if not sq:
                 sq_res = await session.execute(select(StandardQuota).where(StandardQuota.class_type == kitchen_class))
                 sq = sq_res.scalars().first()
-                standard_quota_str = json.dumps(sq.quotas, ensure_ascii=False) if sq else "{}"
+            standard_quota_str = json.dumps(sq.quotas, ensure_ascii=False) if sq else "{}"
 
             red_lines = config.global_hard_constraints.red_lines or []
             candidate_dishes = pre_filter_candidate_dishes(
@@ -566,6 +623,7 @@ class MenuGeneratorAgent(BaseAgent):
             retry_alerts=retry_alerts,
             locked_meals=locked_meals,
             standard_quota_str=standard_quota_str,
+            excluded_main_ingredients=kwargs.get("excluded_main_ingredients"),
         )
 
         stream = await _client.chat.completions.create(

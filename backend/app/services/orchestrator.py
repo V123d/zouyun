@@ -11,14 +11,16 @@
 """
 import asyncio
 import logging
+from collections import defaultdict
 from datetime import date as date_cls, timedelta
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 
 from ..schemas.chat_schema import MenuPlanConfig
-from .menu_generator import DayMenuModel, pre_filter_candidate_dishes
+from .menu_generator import DayMenuModel, pre_filter_candidate_dishes, get_main_ingredient
 from .base_agent import AgentRegistry
 from .constraint_checker import _check_menu, _check_daily_nutrition
 from .data_enrichment import _enrich_menu_data
+from .dish_quantity_calculator import calculate_dish_quantities
 from .utils import sse, extract_json, extract_partial_json
 
 logger = logging.getLogger(__name__)
@@ -79,6 +81,7 @@ async def node_generate(state: dict) -> AsyncGenerator[str, None]:
         locked_meals=state.get("locked_meals"),
         candidate_dishes=state.get("candidate_dishes"),
         standard_quota_str=state.get("standard_quota_str", "{}"),
+        excluded_main_ingredients=state.get("excluded_main_ingredients"),
     )
     
     raw_content = ""
@@ -135,10 +138,12 @@ async def node_check(state: dict) -> AsyncGenerator[str, None]:
 
     # 推送每日营养达标数据到前端（仅展示）
     quota_compliance = nutrition_result.get("quota_compliance", [])
+    quota_type = nutrition_result.get("quota_type", "ingredient")
     if quota_compliance:
         yield sse("daily_quota_update", {
             "date": date_str,
             "quota_compliance": quota_compliance,
+            "quota_type": quota_type,
         })
     
     if day_alerts:
@@ -195,12 +200,25 @@ async def node_enrich(state: dict) -> AsyncGenerator[str, None]:
         }})
         enriched_day = await _enrich_menu_data({date_str: day_menu})
         state["day_menu"] = enriched_day.get(date_str, day_menu)
-        # 再推一次带完整 detail 的 update
+
+        # 计算每道菜的份数
+        yield sse("thinking", {"step": {
+            "label": f"份数计算 ({date_str})",
+            "status": "running",
+            "detail": "正在计算每道菜的排菜份数",
+        }})
+        day_menu_with_quantities = calculate_dish_quantities(
+            state["config"],
+            state["day_menu"]
+        )
+        state["day_menu"] = day_menu_with_quantities
+
+        # 再推一次带完整 detail 和份数 的 update
         yield sse("menu_update", {"date": date_str, "meals": state["day_menu"]})
         yield sse("thinking", {"step": {
             "label": f"数据补全 ({date_str})/食材成本计算",
             "status": "done",
-            "detail": f"{date_str} 数据补全与成本计算完成 ✓",
+            "detail": f"{date_str} 数据补全与份数计算完成 ✓",
         }})
 
 def check_edge(state: dict) -> str:
@@ -225,6 +243,15 @@ def build_day_graph() -> StateGraph:
     graph.add_conditional_edges("check", check_edge)
     graph.add_edge("enrich", "end")
     return graph
+
+
+# ── 辅助函数 ──
+def _find_dish_by_name_in_cache(dish_name: str, all_dishes_cache: list) -> Any:
+    """根据菜名从全量菜品缓存中查找菜品对象"""
+    for d in all_dishes_cache:
+        if getattr(d, 'name', '') == dish_name:
+            return d
+    return None
 
 
 # ── 编排入口 ──
@@ -393,26 +420,8 @@ async def orchestrate_menu_stream(
             "config_dict": day_config_dict
         }
 
-    selected_dishes_history = []  # tuple: (date_str, cat_name, dish_name)
-    
-    generate_dates = []
-    
-    # 将不需要生成的日期直接并入 full_menu，跳出 graph
-    for d in all_dates:
-        if is_partial_mode and d not in dates_to_generate:
-            if current_menu_data and d in current_menu_data:
-                full_menu[d] = current_menu_data[d]
-                # 先通知前端不需要生成的餐次
-                yield sse("menu_update", {"date": d, "meals": current_menu_data[d]})
-                for cats in current_menu_data[d].values():
-                    for cat_name, dishes in cats.items():
-                        selected_dishes_history.extend([(d, cat_name, dish.get("name", "")) for dish in dishes])
-        else:
-            generate_dates.append(d)
-
-    date_groups = [generate_dates[i: i + GROUP_SIZE] for i in range(0, len(generate_dates), GROUP_SIZE)]
-
     # 一次性预查全量菜品和灶别标准，避免每天重复查库
+    # 注意：此查询必须放在预加载循环之前，因为预加载时需要通过菜名反查主配料
     from ..database import AsyncSessionLocal
     from sqlalchemy import select
     from ..models.dish import Dish
@@ -423,18 +432,51 @@ async def orchestrate_menu_stream(
         all_dishes_result = await session.execute(select(Dish))
         all_dishes_cache = all_dishes_result.scalars().all()
 
+        quota_profile_id = config_data.context_overview.quota_profile_id
         kitchen_class = config_data.context_overview.kitchen_class
-        sq_res = await session.execute(select(StandardQuota).where(StandardQuota.class_type == kitchen_class))
-        sq = sq_res.scalars().first()
+        sq_res = await session.execute(select(StandardQuota).where(StandardQuota.id == quota_profile_id))
+        sq = sq_res.scalar_one_or_none()
+        if not sq:
+            sq_res = await session.execute(select(StandardQuota).where(StandardQuota.class_type == kitchen_class))
+            sq = sq_res.scalar_one_or_none()
         standard_quota_str_cache = json_mod.dumps(sq.quotas, ensure_ascii=False) if sq else "{}"
+        quota_profile_name = sq.name if sq else kitchen_class
 
-    logger.info(f"Pre-fetched {len(all_dishes_cache)} dishes and standard quota for '{kitchen_class}'")
+    logger.info(f"Pre-fetched {len(all_dishes_cache)} dishes and quota '{quota_profile_name}'")
+
+    selected_dishes_history: list[tuple[str, str, str]] = []  # tuple: (date_str, cat_name, dish_name)
+    excluded_main_ingredients: dict[str, set[str]] = defaultdict(set)
+
+    generate_dates = []
+
+    # 将不需要生成的日期直接并入 full_menu，跳出 graph
+    # 同步记录主配料，供后续天预筛选使用
+    for d in all_dates:
+        if is_partial_mode and d not in dates_to_generate:
+            if current_menu_data and d in current_menu_data:
+                full_menu[d] = current_menu_data[d]
+                yield sse("menu_update", {"date": d, "meals": current_menu_data[d]})
+                for cats in current_menu_data[d].values():
+                    for cat_name, dishes in cats.items():
+                        for dish in dishes:
+                            dish_name_str = dish.get("name", "")
+                            selected_dishes_history.append((d, cat_name, dish_name_str))
+                            if cat_name not in {"汤"}:
+                                dish_obj = _find_dish_by_name_in_cache(dish_name_str, all_dishes_cache)
+                                if dish_obj:
+                                    main_ing = get_main_ingredient(dish_obj)
+                                    if main_ing:
+                                        excluded_main_ingredients[cat_name].add(main_ing)
+        else:
+            generate_dates.append(d)
+
+    date_groups = [generate_dates[i: i + GROUP_SIZE] for i in range(0, len(generate_dates), GROUP_SIZE)]
 
     graph = build_day_graph()
 
     for group in date_groups:
         queue = asyncio.Queue()
-        
+
         async def run_day_workflow(d: str):
             excluded_dishes = set()
             target_date_obj = date_cls.fromisoformat(d)
@@ -442,6 +484,12 @@ async def orchestrate_menu_stream(
                 if cat in {"汤"}:
                     continue
                 excluded_dishes.add(d_name)
+                # 同步记录主配料，用于同类菜主配料去重
+                prev_dish = _find_dish_by_name_in_cache(d_name, all_dishes_cache)
+                if prev_dish:
+                    main_ing = get_main_ingredient(prev_dish)
+                    if main_ing:
+                        excluded_main_ingredients[cat].add(main_ing)
 
             # 预筛选候选菜品：从全量菜品库中按结构需求选出 50~100 道
             day_config = daily_configs[d]["config"]
@@ -451,6 +499,7 @@ async def orchestrate_menu_stream(
                 config=day_config,
                 red_lines=red_lines,
                 excluded_dishes=list(excluded_dishes),
+                excluded_main_ingredients=excluded_main_ingredients,
             )
 
             state = {
@@ -463,7 +512,8 @@ async def orchestrate_menu_stream(
                 "candidate_dishes": candidate_dishes,
                 "standard_quota_str": standard_quota_str_cache,
                 "attempt": 0,
-                "locked_meals": locked_meals_by_date.get(d)
+                "locked_meals": locked_meals_by_date.get(d),
+                "excluded_main_ingredients": excluded_main_ingredients,
             }
             try:
                 async for event in graph.run(state):
@@ -486,7 +536,15 @@ async def orchestrate_menu_stream(
                     full_menu[d_str] = day_m
                     for cats in day_m.values():
                         for cat_name, dishes in cats.items():
-                            selected_dishes_history.extend([(d_str, cat_name, dish.get("name", "")) for dish in dishes])
+                            for dish in dishes:
+                                dish_name_str = dish.get("name", "")
+                                selected_dishes_history.append((d_str, cat_name, dish_name_str))
+                                # 同步更新主配料跟踪，供后续天预筛选使用
+                                dish_obj = _find_dish_by_name_in_cache(dish_name_str, all_dishes_cache)
+                                if dish_obj:
+                                    main_ing = get_main_ingredient(dish_obj)
+                                    if main_ing and cat_name not in {"汤"}:
+                                        excluded_main_ingredients[cat_name].add(main_ing)
             elif isinstance(event, str):
                 yield event
                 # 对于部分关键动画加入极短延迟以免前端失帧
@@ -534,12 +592,22 @@ async def orchestrate_menu_stream(
                 "detail": f"全局第{global_attempt + 1}轮检查: {alert_summary}，重排 {len(dates_to_redo)} 天",
             }})
 
-            kept_history = []
+            kept_history: list[tuple[str, str, str]] = []
+            kept_main_ing: dict[str, set[str]] = defaultdict(set)
             for menu_d, day_m in full_menu.items():
                 if menu_d not in dates_to_redo:
                     for cats in day_m.values():
                         for cat_name, dishes in cats.items():
-                            kept_history.extend([(menu_d, cat_name, dish.get("name", "")) for dish in dishes])
+                            for dish in dishes:
+                                dish_name_str = dish.get("name", "")
+                                kept_history.append((menu_d, cat_name, dish_name_str))
+                                # 同步记录主配料
+                                if cat_name not in {"汤"}:
+                                    dish_obj = _find_dish_by_name_in_cache(dish_name_str, all_dishes_cache)
+                                    if dish_obj:
+                                        main_ing = get_main_ingredient(dish_obj)
+                                        if main_ing:
+                                            kept_main_ing[cat_name].add(main_ing)
 
             for d in dates_to_redo:
                 full_menu.pop(d, None)
@@ -559,11 +627,18 @@ async def orchestrate_menu_stream(
                 }})
 
                 current_retry_excluded = set()
+                current_retry_main_ing: dict[str, set[str]] = defaultdict(set)
                 target_date_obj = date_cls.fromisoformat(d)
                 for prev_d, cat, d_name in kept_history:
                     if cat in {"汤"}:
                         continue
                     current_retry_excluded.add(d_name)
+                    # 同步记录主配料
+                    dish_obj = _find_dish_by_name_in_cache(d_name, all_dishes_cache)
+                    if dish_obj:
+                        main_ing = get_main_ingredient(dish_obj)
+                        if main_ing:
+                            current_retry_main_ing[cat].add(main_ing)
 
                 # 全局重排也走预筛选
                 retry_day_config = daily_configs[d]["config"]
@@ -573,6 +648,7 @@ async def orchestrate_menu_stream(
                     config=retry_day_config,
                     red_lines=retry_red_lines,
                     excluded_dishes=list(current_retry_excluded),
+                    excluded_main_ingredients=current_retry_main_ing,
                 )
 
                 stream_gen = menu_agent.execute_stream(
@@ -583,6 +659,7 @@ async def orchestrate_menu_stream(
                     retry_alerts=retry_alerts_text,
                     candidate_dishes=retry_candidates,
                     standard_quota_str=standard_quota_str_cache,
+                    excluded_main_ingredients=current_retry_main_ing,
                 )
                 
                 raw_content = ""
@@ -613,7 +690,15 @@ async def orchestrate_menu_stream(
 
                     for cats in day_menu.values():
                         for cat_name, dishes in cats.items():
-                            kept_history.extend([(d, cat_name, dish.get("name", "")) for dish in dishes])
+                            for dish in dishes:
+                                dish_name_str = dish.get("name", "")
+                                kept_history.append((d, cat_name, dish_name_str))
+                                if cat_name not in {"汤"}:
+                                    dish_obj = _find_dish_by_name_in_cache(dish_name_str, all_dishes_cache)
+                                    if dish_obj:
+                                        main_ing = get_main_ingredient(dish_obj)
+                                        if main_ing:
+                                            kept_main_ing[cat_name].add(main_ing)
                 else:
                     yield sse("thinking", {"step": {
                         "label": "菜单重生成",
@@ -630,6 +715,7 @@ async def orchestrate_menu_stream(
             "alert_count": final_check["metrics"].get("alert_count", 0),
             "quota_compliance": final_check["metrics"].get("quota_compliance", []),
         }
+        final_quota_type = final_check.get("quota_type", "ingredient")
 
         final_alerts_readable = [
             f"[{a.get('type', '')}] {a.get('date', '')} "
@@ -645,6 +731,7 @@ async def orchestrate_menu_stream(
             "menu": full_menu,
             "metrics": final_metrics,
             "alerts": final_alerts_readable,
+            "quota_type": final_quota_type,
         })
     except asyncio.CancelledError:
         logger.info("Client disconnected, menu generation stopped.")

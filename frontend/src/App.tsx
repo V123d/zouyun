@@ -10,13 +10,15 @@ import CalendarDashboard from './components/calendar/CalendarDashboard';
 import ConfigDrawer from './components/config-drawer/ConfigDrawer';
 import HistoryDrawer from './components/chat/HistoryDrawer';
 import DatabaseManager from './components/database/DatabaseManager';
+import NutritionQuotaPanel from './components/nutrition-quota/NutritionQuotaPanel';
 import { useState } from 'react';
-import { Clock, Database } from 'lucide-react';
+import { Clock, Database, Apple } from 'lucide-react';
 
 function App() {
   const { token, user, logout } = useAuthStore();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [dbManagerOpen, setDbManagerOpen] = useState(false);
+  const [quotaPanelOpen, setQuotaPanelOpen] = useState(false);
   const resetAll = useAppStore(state => state.resetAll);
 
   const handleLogout = () => {
@@ -36,8 +38,8 @@ function App() {
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-sm">
             <span className="text-white text-sm">🍽️</span>
           </div>
-          <h1 className="text-sm font-bold text-text-primary tracking-wide">走云智能后厨</h1>
-          <span className="text-xs text-text-muted hidden sm:inline">智能排菜系统 v2.0 · 多智能体架构</span>
+          <h1 className="text-sm font-bold text-text-primary tracking-wide">膳云AI营养排菜</h1>
+          <span className="text-xs text-text-muted hidden sm:inline">智能排菜 · 多智能体架构</span>
         </div>
         
         <div className="flex items-center gap-4">
@@ -55,6 +57,15 @@ function App() {
           >
             <Database size={16} />
             数据库
+          </button>
+
+          <button
+            onClick={() => setQuotaPanelOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-text-secondary hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+            title="查看每日营养配额达标详情"
+          >
+            <Apple size={16} />
+            营养达标
           </button>
           
           <div className="flex items-center gap-2">
@@ -102,6 +113,9 @@ function App() {
       
       {/* 数据库管理面板 */}
       <DatabaseManager isOpen={dbManagerOpen} onClose={() => setDbManagerOpen(false)} />
+
+      {/* 营养配额达标详情面板 */}
+      {quotaPanelOpen && <NutritionQuotaPanel onClose={() => setQuotaPanelOpen(false)} />}
     </div>
   );
 }

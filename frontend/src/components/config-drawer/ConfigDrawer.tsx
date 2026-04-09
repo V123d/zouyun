@@ -8,13 +8,13 @@ import {
     Trash2,
     Save,
     AlertTriangle,
+    Settings,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/app-store';
-import type { KitchenClass, DiningStyleType, MealConfig, DishCategory } from '../../types';
-import { getDishCategories } from '../../services/api';
+import type { MealConfig, DishCategory, QuotaProfile } from '../../types';
+import { getDishCategories, getQuotaProfiles } from '../../services/api';
+import QuotaEditor from '../quota-editor/QuotaEditor';
 
-const KITCHEN_CLASS_OPTIONS: KitchenClass[] = ['一类灶', '二类灶', '三类灶'];
-const DINING_STYLES: DiningStyleType[] = ['固定餐标', '自选打菜', '自助餐', '多套餐模式'];
 const STAPLE_OPTIONS = ['米饭', '炒饭', '面食', '包子', '饺子', '馒头', '花卷'];
 
 export default function ConfigDrawer() {
@@ -22,7 +22,7 @@ export default function ConfigDrawer() {
         config,
         configDrawerOpen,
         setConfigDrawerOpen,
-        updateKitchenClass,
+        updateQuotaProfile,
         updateCity,
         updateSchedule,
         updateMealConfig,
@@ -30,6 +30,8 @@ export default function ConfigDrawer() {
         addMeal,
         removeMeal,
         updateRedLines,
+        quotaProfiles,
+        setQuotaProfiles,
     } = useAppStore();
 
     const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set());
@@ -41,9 +43,12 @@ export default function ConfigDrawer() {
     const [isAddingHealth, setIsAddingHealth] = useState(false);
     const [newDietaryRestriction, setNewDietaryRestriction] = useState('');
     const [isAddingDietary, setIsAddingDietary] = useState(false);
+    const [quotaEditorOpen, setQuotaEditorOpen] = useState(false);
+    const [selectedProfileId, setSelectedProfileId] = useState<number | undefined>(undefined);
 
     useEffect(() => {
         getDishCategories().then(setAvailableCategories);
+        getQuotaProfiles().then(setQuotaProfiles);
     }, []);
 
     const toggleExpand = (mealId: string) => {
@@ -58,28 +63,49 @@ export default function ConfigDrawer() {
 
     const handleSelectCategory = (mealId: string, meal: MealConfig, name: string) => {
         if (!name) return;
+        const newCategories = [...meal.dish_structure.categories, { name, count: 1 }];
+        // 同步更新个人菜品结构
+        const newPersonalCategories = [...meal.meal_specific_constraints.personal_dish_structure.categories, { name, count: 1 }];
         updateMealConfig(mealId, {
-            dish_structure: {
-                categories: [...meal.dish_structure.categories, { name, count: 1 }],
+            dish_structure: { categories: newCategories },
+            meal_specific_constraints: {
+                ...meal.meal_specific_constraints,
+                personal_dish_structure: { categories: newPersonalCategories },
             },
         });
         setAddingCategoryToMealId(null);
     };
 
     const handleRemoveCategory = (mealId: string, meal: MealConfig, catIndex: number) => {
+        const removedCat = meal.dish_structure.categories[catIndex];
         updateMealConfig(mealId, {
             dish_structure: {
                 categories: meal.dish_structure.categories.filter((_, i) => i !== catIndex),
+            },
+            meal_specific_constraints: {
+                ...meal.meal_specific_constraints,
+                personal_dish_structure: {
+                    categories: meal.meal_specific_constraints.personal_dish_structure.categories.filter(c => c.name !== removedCat.name),
+                },
             },
         });
     };
 
     const handleCategoryChange = (mealId: string, meal: MealConfig, catIndex: number, updates: Partial<DishCategory>) => {
+        const oldName = meal.dish_structure.categories[catIndex].name;
+        const newName = updates.name ?? oldName;
+        const newCategories = meal.dish_structure.categories.map((c, i) =>
+            i === catIndex ? { ...c, ...updates } : c
+        );
+        // 同步更新个人菜品结构中的分类名
+        const newPersonalCategories = meal.meal_specific_constraints.personal_dish_structure.categories.map(c =>
+            c.name === oldName ? { ...c, name: newName } : c
+        );
         updateMealConfig(mealId, {
-            dish_structure: {
-                categories: meal.dish_structure.categories.map((c, i) =>
-                    i === catIndex ? { ...c, ...updates } : c
-                ),
+            dish_structure: { categories: newCategories },
+            meal_specific_constraints: {
+                ...meal.meal_specific_constraints,
+                personal_dish_structure: { categories: newPersonalCategories },
             },
         });
     };
@@ -119,25 +145,49 @@ export default function ConfigDrawer() {
                         <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">基础属性</h3>
                         <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-xs text-text-muted mb-1">灶别标准</label>
-                                <select
-                                    value={config.context_overview.kitchen_class}
-                                    onChange={(e) => updateKitchenClass(e.target.value as KitchenClass)}
-                                    className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-surface focus:border-primary-400 outline-none"
-                                >
-                                    {KITCHEN_CLASS_OPTIONS.map((s) => (
-                                        <option key={s} value={s}>{s}</option>
-                                    ))}
-                                </select>
+                                <label className="block text-xs text-text-muted mb-1">营养标准</label>
+                                <div className="flex items-center gap-1">
+                                    <select
+                                        value={config.context_overview.quota_profile_id}
+                                        onChange={(e) => {
+                                            const id = Number(e.target.value);
+                                            const profile = quotaProfiles.find(p => p.id === id);
+                                            if (profile) {
+                                                updateQuotaProfile(id, profile.name);
+                                            }
+                                        }}
+                                        className="flex-1 px-3 py-2 rounded-lg border border-border text-sm bg-surface focus:border-primary-400 outline-none"
+                                    >
+                                        {quotaProfiles.map((p) => (
+                                            <option key={p.id} value={p.id}>{p.name}</option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedProfileId(config.context_overview.quota_profile_id);
+                                            setQuotaEditorOpen(true);
+                                        }}
+                                        className="px-2 py-2 rounded-lg border border-border text-text-secondary hover:bg-gray-50 flex items-center justify-center"
+                                        title="管理营养配额配置"
+                                    >
+                                        <Settings size={14} />
+                                    </button>
+                                </div>
+                                {(() => {
+                                    const cur = quotaProfiles.find(p => p.id === config.context_overview.quota_profile_id);
+                                    return cur ? (
+                                        <p className="text-[10px] text-text-muted mt-1 truncate">{cur.description || '无描述'}</p>
+                                    ) : null;
+                                })()}
                             </div>
                             <div>
-                                <label className="block text-xs text-text-muted mb-1">所属支队</label>
+                                <label className="block text-xs text-text-muted mb-1">所属食堂</label>
                                 <input
                                     type="text"
                                     value={config.context_overview.city}
                                     onChange={(e) => updateCity(e.target.value)}
                                     className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-surface focus:border-primary-400 outline-none"
-                                    placeholder="输入支队名称"
+                                    placeholder="输入食堂名称"
                                 />
                             </div>
                         </div>
@@ -265,24 +315,6 @@ export default function ConfigDrawer() {
                                                 </div>
                                             </div>
 
-                                            {/* 用餐方式 */}
-                                            <div>
-                                                <label className="block text-[11px] text-text-muted mb-1">用餐方式</label>
-                                                <select
-                                                    value={meal.dining_style.type}
-                                                    onChange={(e) =>
-                                                        updateMealConfig(meal.id, {
-                                                            dining_style: { ...meal.dining_style, type: e.target.value as DiningStyleType },
-                                                        })
-                                                    }
-                                                    className="w-full px-2 py-1.5 rounded-md border border-border text-xs outline-none focus:border-primary-400"
-                                                >
-                                                    {DINING_STYLES.map((ds) => (
-                                                        <option key={ds} value={ds}>{ds}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
                                             {/* 菜品分类栅格 */}
                                             <div>
                                                 <div className="flex items-center justify-between mb-2">
@@ -334,6 +366,39 @@ export default function ConfigDrawer() {
                                                             </select>
                                                         </div>
                                                     )}
+                                                </div>
+                                            </div>
+
+                                            {/* 个人菜品结构 */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <label className="text-[11px] text-text-muted font-medium">个人菜品结构（每人份数）</label>
+                                                </div>
+                                                <p className="text-[10px] text-text-muted mb-2">设置每个人每餐各分类的菜品数量，用于计算每道菜的排菜份数</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {meal.meal_specific_constraints.personal_dish_structure.categories.map((cat, i) => (
+                                                        <div key={i} className="flex items-center gap-1 px-2 py-1.5 bg-accent-50 rounded-lg border border-accent-100 group">
+                                                            <span className="text-xs font-medium text-accent-600 px-1">{cat.name}</span>
+                                                            <span className="text-[10px] text-text-muted">每人</span>
+                                                            <input
+                                                                type="number"
+                                                                value={cat.count}
+                                                                onChange={(e) => {
+                                                                    const newCategories = [...meal.meal_specific_constraints.personal_dish_structure.categories];
+                                                                    newCategories[i] = { ...newCategories[i], count: Number(e.target.value) };
+                                                                    updateMealConfig(meal.id, {
+                                                                        meal_specific_constraints: {
+                                                                            ...meal.meal_specific_constraints,
+                                                                            personal_dish_structure: { categories: newCategories },
+                                                                        },
+                                                                    });
+                                                                }}
+                                                                className="w-8 text-xs bg-transparent outline-none text-center text-accent-600 font-medium"
+                                                                min={0}
+                                                            />
+                                                            <span className="text-[10px] text-text-muted">道</span>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             </div>
 
@@ -598,6 +663,19 @@ export default function ConfigDrawer() {
                     </button>
                 </div>
             </div>
+
+            {quotaEditorOpen && (
+                <QuotaEditor
+                    onClose={() => {
+                        setQuotaEditorOpen(false);
+                        getQuotaProfiles().then(setQuotaProfiles);
+                    }}
+                    initialProfileId={selectedProfileId}
+                    onSave={(profile) => {
+                        setQuotaProfiles([...quotaProfiles.filter(p => p.id !== profile.id), profile]);
+                    }}
+                />
+            )}
         </>
     );
 }

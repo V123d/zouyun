@@ -14,7 +14,7 @@ export default function ContextHeader() {
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-sm">
                     <span className="text-white text-sm">🍽️</span>
                 </div>
-                <h1 className="text-base font-bold text-text-primary">走云智能后厨</h1>
+                <h1 className="text-base font-bold text-text-primary">膳云AI营养排菜</h1>
                 <span className="text-xs text-text-muted ml-1">智能排菜系统</span>
             </div>
 

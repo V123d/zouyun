@@ -1,13 +1,28 @@
-/* ========== 走云智能排菜系统 — 核心类型定义 ========== */
+/* ========== 膳云AI营养排菜 — 核心类型定义 ========== */
 
-/** 灶别标准 */
-export type KitchenClass = '一类灶' | '二类灶' | '三类灶';
+/** 灶别标准（已扩展为通用标识，与 quota_profile_id 配合使用） */
+export type KitchenClass = string;
 
-/** 用餐方式类型 */
-export type DiningStyleType = '固定餐标' | '自选打菜' | '自助餐' | '多套餐模式';
+/** 配额配置文件数据模型 */
+export interface QuotaProfile {
+    id: number;
+    class_type: string;
+    name: string;
+    description: string;
+    quotas: Record<string, number>;
+    quota_type: 'ingredient' | 'nutrition';
+    is_system: boolean;
+}
 
-/** 成本核算方式 */
-export type CostCalculationType = '按食材成本核算' | '按售价核算';
+/** 配额配置文件列表项（创建/更新用） */
+export interface QuotaProfileCreate {
+    class_type: string;
+    name: string;
+    description?: string;
+    quotas: Record<string, number>;
+    quota_type?: 'ingredient' | 'nutrition';
+    is_system?: boolean;
+}
 
 /** 汤性要求 (已废弃) */
 
@@ -28,21 +43,14 @@ export interface SoupRequirement {
     description: string;
 }
 
-
-
-/** 用餐方式配置 */
-export interface DiningStyle {
-    type: DiningStyleType;
-    cost_type?: CostCalculationType;
-    total_dishes?: number;
-    avg_picks?: number;
-    set_meal_count?: number;
-}
-
 /** 餐次特定约束 */
 export interface MealSpecificConstraints {
     required_ingredients: string[];
     mandatory_dishes: string[];
+    /** 个人菜品结构：每人每餐各分类的菜品数量 */
+    personal_dish_structure: {
+        categories: DishCategory[];
+    };
 }
 
 /** 单餐次配置 */
@@ -53,7 +61,6 @@ export interface MealConfig {
     diners_count: number;
     intake_rate: number;
     budget_per_person: number;
-    dining_style: DiningStyle;
     meal_specific_constraints: MealSpecificConstraints;
     dish_structure: {
         categories: DishCategory[];
@@ -87,6 +94,7 @@ export interface GlobalHardConstraints {
 /** 全局上下文 */
 export interface ContextOverview {
     kitchen_class: KitchenClass;
+    quota_profile_id: number;
     city: string;
     schedule: {
         start_date: string;
@@ -118,12 +126,14 @@ export interface DishInfo {
     };
     tags: string[];
     is_manual_added?: boolean;
+    /** 排菜份数（由后台计算得出） */
+    quantity?: number;
 }
 
-/** 灶别标准数据模型 */
+/** 灶别标准（已迁移到 QuotaProfile） */
 export interface StandardQuota {
     id: number;
-    class_type: KitchenClass;
+    class_type: string;
     quotas: Record<string, number>;
 }
 
@@ -150,6 +160,14 @@ export interface QuotaCompliance {
     actual: number;
     standard: number;
     rate: number;
+    unit?: string;
+}
+
+/** 单日营养配额达标数据（SSE推送结构） */
+export interface DailyQuotaUpdate {
+    date: string;
+    quota_compliance: QuotaCompliance[];
+    quota_type?: 'ingredient' | 'nutrition';
 }
 
 /** 核心指标汇总 */
