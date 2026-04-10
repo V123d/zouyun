@@ -326,7 +326,7 @@ export async function deleteChatSession(sessionId: string): Promise<void> {
 // 菜品库 CRUD 接口
 // ==========================
 
-import type { StandardQuota, QuotaProfile, QuotaProfileCreate } from '../types';
+import type { QuotaProfile, QuotaProfileCreate } from '../types';
 
 /** 创建新菜品 */
 export async function createDish(dish: Partial<DishInfo>): Promise<DishInfo> {

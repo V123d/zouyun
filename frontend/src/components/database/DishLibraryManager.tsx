@@ -19,9 +19,9 @@ export default function DishLibraryManager() {
 
     // 新增分类相关状态
     const [newDishCategory, setNewDishCategory] = useState('');
-    const [newIngredientCategory, setNewIngredientCategory] = useState('');
+    // const [newIngredientCategory, setNewIngredientCategory] = useState('');
     const [isAddingDishCategory, setIsAddingDishCategory] = useState(false);
-    const [isAddingIngredientCategory, setIsAddingIngredientCategory] = useState(false);
+    // const [isAddingIngredientCategory, setIsAddingIngredientCategory] = useState(false);
 
     // 编辑相关状态
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -66,16 +66,16 @@ export default function DishLibraryManager() {
     };
 
     // 添加新的配料分类
-    const handleAddIngredientCategory = async () => {
-        const trimmed = newIngredientCategory.trim();
-        if (!trimmed) return;
-        const success = await addCategory('ingredient', trimmed);
-        if (success) {
-            setIngredientCategories(prev => [...prev, trimmed].sort((a, b) => a.localeCompare(b, 'zh-CN')));
-        }
-        setNewIngredientCategory('');
-        setIsAddingIngredientCategory(false);
-    };
+    // const handleAddIngredientCategory = async () => {
+    //     const trimmed = newIngredientCategory.trim();
+    //     if (!trimmed) return;
+    //     const success = await addCategory('ingredient', trimmed);
+    //     if (success) {
+    //         setIngredientCategories(prev => [...prev, trimmed].sort((a, b) => a.localeCompare(b, 'zh-CN')));
+    //     }
+    //     setNewIngredientCategory('');
+    //     setIsAddingIngredientCategory(false);
+    // };
 
     const filteredDishes = useMemo(() => {
         return dishes.filter((dish: DishInfo) => {

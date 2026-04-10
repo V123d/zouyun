@@ -11,7 +11,7 @@ import {
     Settings,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/app-store';
-import type { MealConfig, DishCategory, QuotaProfile } from '../../types';
+import type { MealConfig, DishCategory } from '../../types';
 import { getDishCategories, getQuotaProfiles } from '../../services/api';
 import QuotaEditor from '../quota-editor/QuotaEditor';
 

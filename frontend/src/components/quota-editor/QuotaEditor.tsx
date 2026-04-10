@@ -145,36 +145,36 @@ export default function QuotaEditor({ onClose, initialProfileId, onSave }: Quota
         setError('');
     }
 
-    function startDuplicate() {
-        const profile = profiles.find(p => p.id === selectedId);
-        if (!profile) return;
-        const qt: QuotaType = (profile as any).quota_type || 'ingredient';
-        setQuotaType(qt);
-        setEditForm({
-            class_type: '',
-            name: profile.name + ' (副本)',
-            description: profile.description,
-            quotas: { ...profile.quotas },
-            quota_type: qt,
-            is_system: false,
-        });
-        setQuotaEntries(
-            Object.entries(profile.quotas).map(([name, value]) => ({ name, value: String(value) }))
-        );
-        if (qt === 'nutrition') {
-            const nf: Record<string, string> = {};
-            NUTRITION_KEYS.forEach(({ key, defaultVal }) => {
-                const v = profile.quotas[key];
-                nf[key] = String(v != null ? v : defaultVal);
-            });
-            setNutritionForm(nf);
-            setQuotaEntries([]);
-        } else {
-            setNutritionForm({});
-        }
-        setEditMode('create');
-        setError('');
-    }
+    // function startDuplicate() {
+    //     const profile = profiles.find(p => p.id === selectedId);
+    //     if (!profile) return;
+    //     const qt: QuotaType = (profile as any).quota_type || 'ingredient';
+    //     setQuotaType(qt);
+    //     setEditForm({
+    //         class_type: '',
+    //         name: profile.name + ' (副本)',
+    //         description: profile.description,
+    //         quotas: { ...profile.quotas },
+    //         quota_type: qt,
+    //         is_system: false,
+    //     });
+    //     setQuotaEntries(
+    //         Object.entries(profile.quotas).map(([name, value]) => ({ name, value: String(value) }))
+    //     );
+    //     if (qt === 'nutrition') {
+    //         const nf: Record<string, string> = {};
+    //         NUTRITION_KEYS.forEach(({ key, defaultVal }) => {
+    //             const v = profile.quotas[key];
+    //             nf[key] = String(v != null ? v : defaultVal);
+    //         });
+    //         setNutritionForm(nf);
+    //         setQuotaEntries([]);
+    //     } else {
+    //         setNutritionForm({});
+    //     }
+    //     setEditMode('create');
+    //     setError('');
+    // }
 
     function updateEntry(index: number, field: 'name' | 'value', val: string) {
         const next = [...quotaEntries];

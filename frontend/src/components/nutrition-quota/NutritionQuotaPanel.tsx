@@ -40,12 +40,12 @@ const NUTRITION_ICONS: Record<string, string> = {
     '碳水化合物': '🍞',
 };
 
-const NUTRITION_UNITS: Record<string, string> = {
-    '卡路里': 'kcal',
-    '蛋白质': 'g',
-    '脂肪': 'g',
-    '碳水化合物': 'g',
-};
+// const NUTRITION_UNITS: Record<string, string> = {
+//     '卡路里': 'kcal',
+//     '蛋白质': 'g',
+//     '脂肪': 'g',
+//     '碳水化合物': 'g',
+// };
 
 function getRateColor(rate: number): string {
     if (rate >= 0.9) return 'text-green-600';
