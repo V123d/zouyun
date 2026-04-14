@@ -16,23 +16,6 @@ interface NutritionQuotaPanelProps {
     onClose: () => void;
 }
 
-const CATEGORY_ICONS: Record<string, string> = {
-    '大米': '🍚',
-    '面粉': '🌾',
-    '畜肉': '🥩',
-    '禽肉': '🍗',
-    '禽蛋': '🥚',
-    '鱼虾': '🐟',
-    '牛奶': '🥛',
-    '大豆': '🫘',
-    '蔗糖': '🍬',
-    '植物油': '🫒',
-    '鲜蔬菜': '🥬',
-    '水果': '🍎',
-    '食用菌(干)': '🍄',
-    '干菜': '🥗',
-};
-
 const NUTRITION_ICONS: Record<string, string> = {
     '卡路里': '🔥',
     '蛋白质': '💪',
@@ -119,47 +102,8 @@ function NutrientCard({ q }: { q: QuotaCompliance }) {
     );
 }
 
-function IngredientCard({ q }: { q: QuotaCompliance }) {
-    return (
-        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${getRateBgColor(q.rate)}`}>
-            <span className="text-base w-6 text-center shrink-0">
-                {CATEGORY_ICONS[q.name] || '📦'}
-            </span>
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-xs font-medium text-text-primary truncate">{q.name}</span>
-                    <span className={`text-[10px] font-semibold ml-2 ${getRateColor(q.rate)}`}>
-                        {getRateLabel(q.rate)}
-                    </span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <RateBar rate={q.rate} />
-                    <div className="flex items-center gap-1 text-[10px] text-text-muted">
-                        <span>{q.actual}g</span>
-                        <span>/</span>
-                        <span>{q.standard}g</span>
-                        <span className="font-medium text-text-secondary">
-                            ({Math.round(q.rate * 100)}%)
-                        </span>
-                    </div>
-                </div>
-            </div>
-            <div className="shrink-0">
-                {q.rate >= 0.9 ? (
-                    <TrendingUp size={12} className="text-green-500" />
-                ) : q.rate >= 0.5 ? (
-                    <Minus size={12} className="text-amber-500" />
-                ) : (
-                    <TrendingDown size={12} className="text-red-500" />
-                )}
-            </div>
-        </div>
-    );
-}
-
 function SingleDayCard({ date, compliance }: { date: string; compliance: QuotaCompliance[] }) {
     const [expanded, setExpanded] = useState(false);
-    const currentQuotaType = useAppStore(s => (s as any).currentQuotaType || 'ingredient');
 
     const dateLabel = (() => {
         try {
@@ -203,11 +147,7 @@ function SingleDayCard({ date, compliance }: { date: string; compliance: QuotaCo
             {expanded && (
                 <div className="px-4 pb-3 space-y-1.5">
                     {compliance.map((q, i) => (
-                        currentQuotaType === 'nutrition' ? (
-                            <NutrientCard key={i} q={q} />
-                        ) : (
-                            <IngredientCard key={i} q={q} />
-                        )
+                        <NutrientCard key={i} q={q} />
                     ))}
                 </div>
             )}

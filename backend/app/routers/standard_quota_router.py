@@ -9,23 +9,7 @@ from typing import List
 router = APIRouter(prefix="/api/standard-quotas", tags=["配额配置"])
 
 # 根据 class_type 推断的默认值（仅当数据库中无自定义值时使用）
-_KNOWN_DEFAULTS: dict[str, dict] = {
-    "一类灶": {
-        "name": "一类灶（武警标准）",
-        "description": "适用于武警部队一类伙食灶别，每日营养摄入参考标准",
-        "quota_type": "ingredient",
-    },
-    "二类灶": {
-        "name": "二类灶（武警标准）",
-        "description": "适用于武警部队二类伙食灶别，每日营养摄入参考标准",
-        "quota_type": "ingredient",
-    },
-    "三类灶": {
-        "name": "三类灶（武警标准）",
-        "description": "适用于武警部队三类伙食灶别，每日营养摄入参考标准",
-        "quota_type": "ingredient",
-    },
-}
+_KNOWN_DEFAULTS: dict[str, dict] = {}
 
 _SELECT_SQL = (
     "SELECT id, class_type, quotas, is_system, "
@@ -40,7 +24,7 @@ def _inject_defaults(row: dict) -> dict:
     defaults = _KNOWN_DEFAULTS.get(ct, {
         "name": ct or "",
         "description": "",
-        "quota_type": "ingredient",
+        "quota_type": "nutrition",
     })
     quotas_val = row.get("quotas")
     if isinstance(quotas_val, str):
@@ -59,7 +43,7 @@ def _inject_defaults(row: dict) -> dict:
         description = defaults.get("description", "")
 
     qt = row.get("quota_type")
-    if isinstance(qt, str) and qt.strip() in ("ingredient", "nutrition"):
+    if isinstance(qt, str) and qt.strip() in ("nutrition",):
         quota_type = qt.strip()
     else:
         quota_type = defaults["quota_type"]
@@ -109,7 +93,7 @@ async def create_quota(quota_in: StandardQuotaCreate):
                 "is_system": quota_in.is_system,
                 "name": quota_in.name or "",
                 "description": quota_in.description or "",
-                "quota_type": quota_in.quota_type or "ingredient",
+                "quota_type": quota_in.quota_type or "nutrition",
             },
         )
         await session.commit()
@@ -153,7 +137,7 @@ async def update_quota(quota_id: int, quota_in: StandardQuotaUpdate):
 
         name_val = ud["name"] if "name" in ud else (current.get("name") or "")
         desc_val = ud["description"] if "description" in ud else (current.get("description") or "")
-        qt_val = ud["quota_type"] if "quota_type" in ud else (current.get("quota_type") or "ingredient")
+        qt_val = ud["quota_type"] if "quota_type" in ud else (current.get("quota_type") or "nutrition")
 
         await session.execute(
             text(
@@ -204,7 +188,7 @@ async def duplicate_quota(quota_id: int, new_name: str = Query(..., description=
                 "quotas": json.dumps(orig_quotas),
                 "name": new_name,
                 "description": orig.get("description") or "",
-                "quota_type": orig.get("quota_type") or "ingredient",
+                "quota_type": orig.get("quota_type") or "nutrition",
             },
         )
         await session.commit()

@@ -255,14 +255,14 @@ def build_filtered_dishes_text(red_lines: list[str], excluded_dishes: list[str],
         if cat not in dishes_by_category:
             dishes_by_category[cat] = []
 
-        # 精简配料展示：只保留分类和克数（LLM 需要据此凑配灶别标准）
+        # 精简配料展示：只保留配料名称（供营养分析参考）
         compact_ingredients = []
         for ing in (ingredients_q if isinstance(ingredients_q, list) else []):
             if isinstance(ing, dict):
-                ing_cat = ing.get("category") or ing.get("name", "")
+                ing_name = ing.get("name", "")
                 ing_amt = ing.get("amount_g") or ing.get("amount") or ing.get("value") or 0
-                if ing_cat and ing_amt:
-                    compact_ingredients.append(f"{ing_cat}:{ing_amt}g")
+                if ing_name and ing_amt:
+                    compact_ingredients.append(f"{ing_name}:{ing_amt}g")
 
         ingredients_str = ",".join(compact_ingredients) if compact_ingredients else "无"
         dishes_by_category[cat].append(
@@ -370,8 +370,8 @@ def build_single_day_prompt(
     system_prompt = f"""你是智能排菜系统的菜单生成智能体（武警总队版）。为 {date}（{weekday_str}）生成单天菜单。
 
 ## 排餐环境
-- 灶别标准: {config.context_overview.kitchen_class} | 城市: {config.context_overview.city}
-- 该灶别配给标准（克/人/天）: {standard_quota_str} (⚠️ 请尽力让今日所有菜品所含配料的人均累计消耗量凑齐满足此标准)
+- 营养标准: {config.context_overview.kitchen_class} | 城市: {config.context_overview.city}
+- 该场景营养素配给标准（人均每日目标）: {standard_quota_str} (⚠️ 请尽力让今日所有菜品所含营养素的人均累计值逼近此标准)
 - 全局意图与偏好: {intent_summary or '按默认配置排菜'}
   (⚠️ 核心原则：如果意图中提到了限定时间的偏好，如“{weekday_str}清淡”，你必须在当前生成的这份菜单中严苛执行该要求！)
 
@@ -393,7 +393,7 @@ def build_single_day_prompt(
 1. 严格按各餐次分类结构的数量选菜，不得多选或少选。
 2. 同一天不同餐次之间菜品不得重复（包括主食类）。
 3. 单人餐标不得超出预算（⚠️ 系统采用全局成本折算规则：人均实际成本 = 所有菜品单价之和 * 0.4，请据此控制选菜）。
-4. 【最重要指标】你必须预估该日所有选中菜品的配料（ingredients_quantified）乘以总就餐人数后的总和，尽可能使其逼近甚至等同该「{config.context_overview.kitchen_class}」的官方营养配额标准（肉类、蔬菜类等大类）。
+4. 【最重要指标】你必须预估该日所有选中菜品的营养素数据（calories/protein/fat/carbs）乘以总就餐人数后的日人均总量，尽可能使其逼近该「{config.context_overview.kitchen_class}」的官方营养配额标准。
 5. 「已排过的菜品」绝对不能选。这里的「已排过的菜品」包含在本次生成任务中此前所有日期已选用的所有菜品（含主食、面点、副食、蛋类等，汤品除外）。
 6. 尽量优先搭配不同口味（酸/甜/咸/辣/清淡），保证丰富度。
 

@@ -22,23 +22,6 @@ interface QuotaEditorProps {
     onSave?: (profile: QuotaProfile) => void;
 }
 
-const DEFAULT_QUOTA_CATEGORIES = [
-    { name: '大米', default_g: 420 },
-    { name: '面粉', default_g: 180 },
-    { name: '畜肉', default_g: 180 },
-    { name: '禽肉', default_g: 60 },
-    { name: '禽蛋', default_g: 70 },
-    { name: '鱼虾', default_g: 90 },
-    { name: '牛奶', default_g: 200 },
-    { name: '大豆', default_g: 80 },
-    { name: '蔗糖', default_g: 30 },
-    { name: '植物油', default_g: 90 },
-    { name: '鲜蔬菜', default_g: 750 },
-    { name: '水果', default_g: 200 },
-    { name: '食用菌(干)', default_g: 5 },
-    { name: '干菜', default_g: 10 },
-];
-
 const NUTRITION_KEYS = [
     { key: 'calories', label: '卡路里', unit: 'kcal', defaultVal: 2400 },
     { key: 'protein', label: '蛋白质', unit: 'g', defaultVal: 75 },
@@ -46,7 +29,7 @@ const NUTRITION_KEYS = [
     { key: 'carbs', label: '碳水化合物', unit: 'g', defaultVal: 360 },
 ];
 
-type QuotaType = 'ingredient' | 'nutrition';
+type QuotaType = 'nutrition';
 
 export default function QuotaEditor({ onClose, initialProfileId, onSave }: QuotaEditorProps) {
     const [profiles, setProfiles] = useState<QuotaProfile[]>([]);
@@ -57,11 +40,9 @@ export default function QuotaEditor({ onClose, initialProfileId, onSave }: Quota
         name: '',
         description: '',
         quotas: {},
-        quota_type: 'ingredient',
+        quota_type: 'nutrition',
         is_system: false,
     });
-    const [quotaType, setQuotaType] = useState<QuotaType>('ingredient');
-    const [quotaEntries, setQuotaEntries] = useState<{ name: string; value: string }[]>([]);
     const [nutritionForm, setNutritionForm] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -97,19 +78,17 @@ export default function QuotaEditor({ onClose, initialProfileId, onSave }: Quota
     }
 
     function startCreate() {
-        setQuotaType('ingredient');
-        const initQuotas: Record<string, number> = {};
-        DEFAULT_QUOTA_CATEGORIES.forEach(c => { initQuotas[c.name] = c.default_g; });
+        const initQuotas: Record<string, string> = {};
+        NUTRITION_KEYS.forEach(({ key, defaultVal }) => { initQuotas[key] = String(defaultVal); });
         setEditForm({
             class_type: '',
             name: '',
             description: '',
-            quotas: initQuotas,
-            quota_type: 'ingredient',
+            quotas: {},
+            quota_type: 'nutrition',
             is_system: false,
         });
-        setQuotaEntries(DEFAULT_QUOTA_CATEGORIES.map(c => ({ name: c.name, value: String(c.default_g) })));
-        setNutritionForm({});
+        setNutritionForm(initQuotas);
         setEditMode('create');
         setError('');
     }
@@ -117,30 +96,20 @@ export default function QuotaEditor({ onClose, initialProfileId, onSave }: Quota
     function startEdit() {
         const profile = profiles.find(p => p.id === selectedId);
         if (!profile) return;
-        const qt: QuotaType = (profile as any).quota_type || 'ingredient';
-        setQuotaType(qt);
         setEditForm({
             class_type: profile.class_type,
             name: profile.name,
             description: profile.description,
             quotas: { ...profile.quotas },
-            quota_type: qt,
+            quota_type: 'nutrition',
             is_system: profile.is_system,
         });
-        setQuotaEntries(
-            Object.entries(profile.quotas).map(([name, value]) => ({ name, value: String(value) }))
-        );
-        if (qt === 'nutrition') {
-            const nf: Record<string, string> = {};
-            NUTRITION_KEYS.forEach(({ key, defaultVal }) => {
-                const v = profile.quotas[key];
-                nf[key] = String(v != null ? v : defaultVal);
-            });
-            setNutritionForm(nf);
-            setQuotaEntries([]);
-        } else {
-            setNutritionForm({});
-        }
+        const nf: Record<string, string> = {};
+        NUTRITION_KEYS.forEach(({ key, defaultVal }) => {
+            const v = profile.quotas[key];
+            nf[key] = String(v != null ? v : defaultVal);
+        });
+        setNutritionForm(nf);
         setEditMode('edit');
         setError('');
     }
@@ -148,70 +117,35 @@ export default function QuotaEditor({ onClose, initialProfileId, onSave }: Quota
     function startDuplicate() {
         const profile = profiles.find(p => p.id === selectedId);
         if (!profile) return;
-        const qt: QuotaType = (profile as any).quota_type || 'ingredient';
-        setQuotaType(qt);
         setEditForm({
             class_type: '',
             name: profile.name + ' (副本)',
             description: profile.description,
             quotas: { ...profile.quotas },
-            quota_type: qt,
+            quota_type: 'nutrition',
             is_system: false,
         });
-        setQuotaEntries(
-            Object.entries(profile.quotas).map(([name, value]) => ({ name, value: String(value) }))
-        );
-        if (qt === 'nutrition') {
-            const nf: Record<string, string> = {};
-            NUTRITION_KEYS.forEach(({ key, defaultVal }) => {
-                const v = profile.quotas[key];
-                nf[key] = String(v != null ? v : defaultVal);
-            });
-            setNutritionForm(nf);
-            setQuotaEntries([]);
-        } else {
-            setNutritionForm({});
-        }
+        const nf: Record<string, string> = {};
+        NUTRITION_KEYS.forEach(({ key, defaultVal }) => {
+            const v = profile.quotas[key];
+            nf[key] = String(v != null ? v : defaultVal);
+        });
+        setNutritionForm(nf);
         setEditMode('create');
         setError('');
     }
 
-    function updateEntry(index: number, field: 'name' | 'value', val: string) {
-        const next = [...quotaEntries];
-        next[index] = { ...next[index], [field]: val };
-        setQuotaEntries(next);
-    }
-
-    function addEntry() {
-        setQuotaEntries([...quotaEntries, { name: '', value: '0' }]);
-    }
-
-    function removeEntry(index: number) {
-        setQuotaEntries(quotaEntries.filter((_, i) => i !== index));
-    }
-
     async function handleSave() {
         let parsedQuotas: Record<string, number> = {};
-
-        if (quotaType === 'ingredient') {
-            for (const e of quotaEntries) {
-                const name = e.name.trim();
-                const val = parseFloat(e.value);
-                if (name) {
-                    parsedQuotas[name] = isNaN(val) ? 0 : val;
-                }
-            }
-        } else {
-            NUTRITION_KEYS.forEach(({ key }) => {
-                const val = parseFloat(nutritionForm[key] || '0');
-                parsedQuotas[key] = isNaN(val) || val <= 0 ? 0 : val;
-            });
-        }
+        NUTRITION_KEYS.forEach(({ key }) => {
+            const val = parseFloat(nutritionForm[key] || '0');
+            parsedQuotas[key] = isNaN(val) || val <= 0 ? 0 : val;
+        });
 
         const form: QuotaProfileCreate = {
             ...editForm,
             quotas: parsedQuotas,
-            quota_type: quotaType,
+            quota_type: 'nutrition',
         };
 
         setLoading(true);
@@ -294,7 +228,7 @@ export default function QuotaEditor({ onClose, initialProfileId, onSave }: Quota
                                 营养配额配置
                             </h2>
                             <p className="text-[11px] text-text-muted mt-0.5">
-                                管理不同场景的营养标准，一类灶/幼儿园/企业食堂等均可配置
+                                管理不同场景的营养标准，幼儿园/小学等均可配置
                             </p>
                         </div>
                         <button
@@ -359,7 +293,7 @@ export default function QuotaEditor({ onClose, initialProfileId, onSave }: Quota
                                                     ? 'bg-orange-100 text-orange-600'
                                                     : 'bg-green-100 text-green-600'
                                             }`}>
-                                                {(selectedProfile as any).quota_type === 'nutrition' ? '营养值配额' : '配料分类配额'}
+                                                {(selectedProfile as any).quota_type === 'nutrition' ? '营养素配额' : '未知类型'}
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-2">
@@ -402,41 +336,7 @@ export default function QuotaEditor({ onClose, initialProfileId, onSave }: Quota
                                                 );
                                             })}
                                         </div>
-                                    ) : (
-                                        <div className="border border-border-light rounded-xl overflow-hidden">
-                                            <table className="w-full text-xs">
-                                                <thead>
-                                                    <tr className="bg-surface border-b border-border-light">
-                                                        <th className="text-left px-4 py-2 font-medium text-text-muted">配料类目</th>
-                                                        <th className="text-right px-4 py-2 font-medium text-text-muted">克/人/天</th>
-                                                        <th className="text-right px-4 py-2 font-medium text-text-muted">占比</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {Object.entries(selectedProfile.quotas).map(([name, value]) => {
-                                                        const total = Object.values(selectedProfile.quotas).reduce((a, b) => a + b, 0);
-                                                        const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
-                                                        return (
-                                                            <tr key={name} className="border-b border-border-light/50 hover:bg-surface/50">
-                                                                <td className="px-4 py-2 text-text-primary">{name}</td>
-                                                                <td className="px-4 py-2 text-right font-medium">{value}g</td>
-                                                                <td className="px-4 py-2 text-right text-text-muted">{pct}%</td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                                <tfoot>
-                                                    <tr className="bg-surface font-medium">
-                                                        <td className="px-4 py-2 text-text-secondary">合计</td>
-                                                        <td className="px-4 py-2 text-right text-primary-600">
-                                                            {Object.values(selectedProfile.quotas).reduce((a, b) => a + b, 0)}g
-                                                        </td>
-                                                        <td className="px-4 py-2 text-right text-text-muted">100%</td>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                        </div>
-                                    )}
+                                    ) : null}
 
                                     {confirmDelete && (
                                         <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-xl">
@@ -506,122 +406,6 @@ export default function QuotaEditor({ onClose, initialProfileId, onSave }: Quota
                                     </div>
 
                                     <div>
-                                        <label className="block text-[11px] text-text-muted mb-2">配额类型</label>
-                                        <div className="flex gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setQuotaType('ingredient');
-                                                    setNutritionForm({});
-                                                    setQuotaEntries(DEFAULT_QUOTA_CATEGORIES.map(c => ({ name: c.name, value: String(c.default_g) })));
-                                                }}
-                                                className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-colors ${
-                                                    quotaType === 'ingredient'
-                                                        ? 'border-primary-400 bg-primary-50 text-primary-600'
-                                                        : 'border-border-light text-text-muted hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                配料分类配额
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setQuotaType('nutrition');
-                                                    setQuotaEntries([]);
-                                                    if (!nutritionForm.calories) {
-                                                        setNutritionForm({
-                                                            calories: '2400',
-                                                            protein: '75',
-                                                            fat: '67',
-                                                            carbs: '360',
-                                                        });
-                                                    }
-                                                }}
-                                                className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-colors ${
-                                                    quotaType === 'nutrition'
-                                                        ? 'border-orange-400 bg-orange-50 text-orange-600'
-                                                        : 'border-border-light text-text-muted hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                营养素配额
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {quotaType === 'ingredient' ? (
-                                        <>
-                                    <div>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <label className="text-[11px] text-text-muted font-medium">
-                                                配料配额明细（克/人/天）
-                                            </label>
-                                            <button
-                                                onClick={addEntry}
-                                                className="text-[10px] text-primary-500 hover:text-primary-600 flex items-center gap-0.5"
-                                            >
-                                                <Plus size={10} /> 添加类目
-                                            </button>
-                                        </div>
-                                        <div className="border border-border-light rounded-xl overflow-hidden">
-                                            <table className="w-full text-xs">
-                                                <thead>
-                                                    <tr className="bg-surface border-b border-border-light">
-                                                        <th className="text-left px-3 py-2 font-medium text-text-muted w-1/2">配料类目名称</th>
-                                                        <th className="text-right px-3 py-2 font-medium text-text-muted w-1/3">克/人/天</th>
-                                                        <th className="w-12"></th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {quotaEntries.map((entry, i) => (
-                                                        <tr key={i} className="border-b border-border-light/50">
-                                                            <td className="px-3 py-1.5">
-                                                                <input
-                                                                    type="text"
-                                                                    value={entry.name}
-                                                                    onChange={e => updateEntry(i, 'name', e.target.value)}
-                                                                    className="w-full px-2 py-1 rounded border border-border-light text-xs bg-transparent outline-none focus:border-primary-300"
-                                                                    placeholder="类目名称"
-                                                                />
-                                                            </td>
-                                                            <td className="px-3 py-1.5">
-                                                                <div className="flex items-center justify-end gap-1">
-                                                                    <input
-                                                                        type="number"
-                                                                        value={entry.value}
-                                                                        onChange={e => updateEntry(i, 'value', e.target.value)}
-                                                                        className="w-20 px-2 py-1 rounded border border-border-light text-xs bg-transparent outline-none focus:border-primary-300 text-right"
-                                                                        min={0}
-                                                                    />
-                                                                    <span className="text-[10px] text-text-muted">g</span>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-1 py-1.5">
-                                                                <button
-                                                                    onClick={() => removeEntry(i)}
-                                                                    className="w-5 h-5 rounded hover:bg-red-100 flex items-center justify-center"
-                                                                >
-                                                                    <X size={8} className="text-red-400" />
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                                <tfoot>
-                                                    <tr className="bg-surface">
-                                                        <td className="px-3 py-2 text-xs text-text-muted">合计</td>
-                                                        <td className="px-3 py-2 text-right text-xs font-medium text-primary-600">
-                                                            {quotaEntries.reduce((sum, e) => sum + (parseFloat(e.value) || 0), 0)}g
-                                                        </td>
-                                                        <td></td>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                        </div>
-                                    </div>
-                                        </>
-                                    ) : (
-                                        <>
-                                    <div>
                                         <label className="text-[11px] text-text-muted font-medium mb-2 block">
                                             营养素配额明细（人均每日目标）
                                         </label>
@@ -640,12 +424,9 @@ export default function QuotaEditor({ onClose, initialProfileId, onSave }: Quota
                                             ))}
                                         </div>
                                         <p className="text-[9px] text-text-muted mt-2">
-                                            基于中国居民膳食营养素参考摄入量，适用于轻体力成年男性参考标准。
-                                            卡路里2400kcal、蛋白质75g、脂肪67g、碳水化合物360g。
+                                            基于中国居民膳食营养素参考摄入量，适用于5-6岁幼儿园大班儿童参考标准。
                                         </p>
                                     </div>
-                                        </>
-                                    )}
 
                                     <div className="flex gap-3 pt-2">
                                         <button

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Clock, FileText, Download, CheckCircle, AlertTriangle, RefreshCw, ChefHat, Info } from 'lucide-react';
+import { X, Clock, FileText, Download, CheckCircle, AlertTriangle, RefreshCw, ChefHat, Info, Flame } from 'lucide-react';
 import { useAppStore } from '../../stores/app-store';
 import { getWeekdayLabel, formatDateShort, getDateRange } from '../../utils/date';
 import { getHistoryList, getHistoryDetail, type HistoryRecord } from '../../services/api';
@@ -288,6 +288,34 @@ export function RecipeModal({ isOpen, onClose, dish }: { isOpen: boolean; onClos
                         <p className="text-sm text-text-muted mt-1">口味: {dish.flavor || '未知'}</p>
                     </div>
 
+                    {/* 营养素信息 */}
+                    {dish.nutrition && (
+                        <div className="mb-6 bg-gradient-to-r from-orange-50 to-amber-50 p-4 rounded-xl border border-orange-100 shadow-sm">
+                            <h4 className="font-semibold text-sm mb-3 text-orange-700 flex items-center gap-2">
+                                <Flame size={16} className="text-orange-500" />
+                                营养素信息（每份）
+                            </h4>
+                            <div className="grid grid-cols-4 gap-2">
+                                <div className="text-center bg-white/80 rounded-lg p-2">
+                                    <div className="text-lg font-bold text-orange-600">{dish.nutrition.calories || 0}</div>
+                                    <div className="text-[10px] text-text-muted">热量(kcal)</div>
+                                </div>
+                                <div className="text-center bg-white/80 rounded-lg p-2">
+                                    <div className="text-lg font-bold text-red-500">{dish.nutrition.protein || 0}</div>
+                                    <div className="text-[10px] text-text-muted">蛋白质(g)</div>
+                                </div>
+                                <div className="text-center bg-white/80 rounded-lg p-2">
+                                    <div className="text-lg font-bold text-amber-500">{dish.nutrition.carbs || 0}</div>
+                                    <div className="text-[10px] text-text-muted">碳水(g)</div>
+                                </div>
+                                <div className="text-center bg-white/80 rounded-lg p-2">
+                                    <div className="text-lg font-bold text-yellow-600">{dish.nutrition.fat || 0}</div>
+                                    <div className="text-[10px] text-text-muted">脂肪(g)</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {dish.ingredients_quantified && Array.isArray(dish.ingredients_quantified) && dish.ingredients_quantified.length > 0 && (
                         <div className="mb-6 bg-white p-4 rounded-xl border border-border shadow-sm">
                             <h4 className="font-semibold text-sm mb-3 text-text-secondary flex items-center gap-2">
@@ -295,7 +323,7 @@ export function RecipeModal({ isOpen, onClose, dish }: { isOpen: boolean; onClos
                                 定量配料标准 (每人份)
                             </h4>
                             <div className="text-sm text-text-primary flex flex-wrap gap-2 mt-2">
-                                {(dish.ingredients_quantified as Array<{name: string, category: string, amount_g: number}>).map((ing, i) => (
+                                {(dish.ingredients_quantified as Array<{name: string, amount_g: number}>).map((ing, i) => (
                                     <span key={i} className="px-2 py-1 bg-surface border border-border-light rounded-md text-xs">
                                         {ing.name} <span className="text-primary-600 font-medium">{ing.amount_g}g</span>
                                     </span>

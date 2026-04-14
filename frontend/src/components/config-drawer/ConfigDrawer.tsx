@@ -17,6 +17,28 @@ import QuotaEditor from '../quota-editor/QuotaEditor';
 
 const STAPLE_OPTIONS = ['米饭', '炒饭', '面食', '包子', '饺子', '馒头', '花卷'];
 
+// 识别分类名属于哪个标准标签（组件外部函数）
+const _getTagForCategory = (categoryName: string): string | null => {
+    // 荤菜标签映射
+    const meatCategories = ['排骨菜系', '猪肉菜系', '牛肉菜系', '鸡肉鸭肉菜系', '水产菜系', '红烧肉菜系', '羊肉菜系'];
+    if (meatCategories.includes(categoryName)) return '荤菜';
+    
+    // 素菜标签映射
+    const vegCategories = ['蔬菜菜系', '豆腐菜系', '菌菇类'];
+    if (vegCategories.includes(categoryName)) return '素菜';
+    
+    // 凉菜标签映射
+    if (categoryName === '食堂凉菜') return '凉菜';
+    
+    // 汤类标签映射
+    if (categoryName === '煲汤菜系') return '汤类';
+    
+    // 主食标签映射
+    if (categoryName === '主食') return '主食';
+    
+    return null;
+};
+
 export default function ConfigDrawer() {
     const {
         config,
@@ -25,6 +47,7 @@ export default function ConfigDrawer() {
         updateQuotaProfile,
         updateCity,
         updateSchedule,
+        updateIncludeWeekends,
         updateMealConfig,
         toggleMeal,
         addMeal,
@@ -46,6 +69,44 @@ export default function ConfigDrawer() {
     const [quotaEditorOpen, setQuotaEditorOpen] = useState(false);
     const [selectedProfileId, setSelectedProfileId] = useState<number | undefined>(undefined);
 
+    // 初始化时自动补充缺失的标签到个人配置
+    useEffect(() => {
+        if (!configDrawerOpen) return;
+        
+        config.meals_config.forEach((meal: MealConfig) => {
+            const dishCategories = meal.dish_structure.categories;
+            const personalCategories = meal.meal_specific_constraints.personal_dish_structure.categories;
+            const personalNames = new Set(personalCategories.map(pc => pc.name));
+            
+            // 检查每个食堂分类的标签是否都在个人配置中
+            const missingTags: string[] = [];
+            dishCategories.forEach(cat => {
+                const tag = _getTagForCategory(cat.name);
+                if (tag && !personalNames.has(tag)) {
+                    missingTags.push(tag);
+                }
+            });
+            
+            // 如果有缺失的标签，自动补充
+            if (missingTags.length > 0) {
+                const newPersonalCategories = [...personalCategories];
+                missingTags.forEach(tag => {
+                    if (!personalNames.has(tag)) {
+                        newPersonalCategories.push({ name: tag, count: 1 });
+                        console.log(`初始化补充标签 '${tag}' 到 ${meal.name} 的个人配置`);
+                    }
+                });
+                
+                updateMealConfig(meal.id, {
+                    meal_specific_constraints: {
+                        ...meal.meal_specific_constraints,
+                        personal_dish_structure: { categories: newPersonalCategories },
+                    },
+                });
+            }
+        });
+    }, [configDrawerOpen, config.meals_config]);
+
     useEffect(() => {
         getDishCategories().then(setAvailableCategories);
         getQuotaProfiles().then(setQuotaProfiles);
@@ -64,8 +125,20 @@ export default function ConfigDrawer() {
     const handleSelectCategory = (mealId: string, meal: MealConfig, name: string) => {
         if (!name) return;
         const newCategories = [...meal.dish_structure.categories, { name, count: 1 }];
-        // 同步更新个人菜品结构
-        const newPersonalCategories = [...meal.meal_specific_constraints.personal_dish_structure.categories, { name, count: 1 }];
+        
+        // 自动识别该分类属于哪个标签，只添加标签到个人配置
+        const tag = _getTagForCategory(name);
+        const newPersonalCategories = [...meal.meal_specific_constraints.personal_dish_structure.categories];
+        
+        // 如果识别到标签，且该标签尚未在个人配置中，则添加标签
+        if (tag && !newPersonalCategories.some(pc => pc.name === tag)) {
+            newPersonalCategories.push({ name: tag, count: 1 });
+            console.log(`分类 '${name}' 识别为标签 '${tag}'，已添加到个人配置`);
+        } else if (!tag) {
+            // 如果无法识别标签，则添加分类名（兜底）
+            newPersonalCategories.push({ name, count: 1 });
+        }
+        
         updateMealConfig(mealId, {
             dish_structure: { categories: newCategories },
             meal_specific_constraints: {
@@ -78,15 +151,30 @@ export default function ConfigDrawer() {
 
     const handleRemoveCategory = (mealId: string, meal: MealConfig, catIndex: number) => {
         const removedCat = meal.dish_structure.categories[catIndex];
+        const removedTag = _getTagForCategory(removedCat.name);
+        
+        // 过滤掉要删除的分类
+        const remainingCategories = meal.dish_structure.categories.filter((_, i) => i !== catIndex);
+        
+        // 检查是否需要从个人配置中移除对应的标签
+        let newPersonalCategories = meal.meal_specific_constraints.personal_dish_structure.categories;
+        
+        if (removedTag) {
+            // 检查是否还有其他分类使用这个标签
+            const otherCategoriesUseThisTag = remainingCategories.some(cat => _getTagForCategory(cat.name) === removedTag);
+            
+            if (!otherCategoriesUseThisTag) {
+                // 没有其他分类使用这个标签，从个人配置中移除
+                newPersonalCategories = newPersonalCategories.filter(pc => pc.name !== removedTag);
+                console.log(`分类 '${removedCat.name}' 被移除，标签 '${removedTag}' 已从个人配置中移除`);
+            }
+        }
+        
         updateMealConfig(mealId, {
-            dish_structure: {
-                categories: meal.dish_structure.categories.filter((_, i) => i !== catIndex),
-            },
+            dish_structure: { categories: remainingCategories },
             meal_specific_constraints: {
                 ...meal.meal_specific_constraints,
-                personal_dish_structure: {
-                    categories: meal.meal_specific_constraints.personal_dish_structure.categories.filter(c => c.name !== removedCat.name),
-                },
+                personal_dish_structure: { categories: newPersonalCategories },
             },
         });
     };
@@ -97,10 +185,21 @@ export default function ConfigDrawer() {
         const newCategories = meal.dish_structure.categories.map((c, i) =>
             i === catIndex ? { ...c, ...updates } : c
         );
-        // 同步更新个人菜品结构中的分类名
-        const newPersonalCategories = meal.meal_specific_constraints.personal_dish_structure.categories.map(c =>
-            c.name === oldName ? { ...c, name: newName } : c
-        );
+        
+        // 获取旧分类和新分类的标签
+        const oldTag = _getTagForCategory(oldName);
+        const newTag = _getTagForCategory(newName);
+        
+        let newPersonalCategories = [...meal.meal_specific_constraints.personal_dish_structure.categories];
+        
+        if (oldTag && newTag && oldTag !== newTag) {
+            // 标签改变了：移除旧标签，添加新标签（如果不存在）
+            newPersonalCategories = newPersonalCategories.filter(pc => pc.name !== oldTag);
+            if (!newPersonalCategories.some(pc => pc.name === newTag)) {
+                newPersonalCategories.push({ name: newTag, count: 1 });
+            }
+        }
+        
         updateMealConfig(mealId, {
             dish_structure: { categories: newCategories },
             meal_specific_constraints: {
@@ -210,6 +309,17 @@ export default function ConfigDrawer() {
                                     className="w-full px-3 py-2 rounded-lg border border-border text-sm bg-surface focus:border-primary-400 outline-none"
                                 />
                             </div>
+                        </div>
+                        <div className="mt-3">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={config.context_overview.include_weekends}
+                                    onChange={(e) => updateIncludeWeekends(e.target.checked)}
+                                    className="w-4 h-4 rounded border-border text-primary-500 cursor-pointer"
+                                />
+                                <span className="text-xs text-text-secondary">包含周末（不勾选则只排工作日）</span>
+                            </label>
                         </div>
                     </section>
 

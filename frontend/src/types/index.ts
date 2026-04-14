@@ -1,4 +1,4 @@
-/* ========== 膳云AI营养排菜 — 核心类型定义 ========== */
+/* ========== 走云AI营养排菜 — 核心类型定义 ========== */
 
 /** 灶别标准（已扩展为通用标识，与 quota_profile_id 配合使用） */
 export type KitchenClass = string;
@@ -10,7 +10,7 @@ export interface QuotaProfile {
     name: string;
     description: string;
     quotas: Record<string, number>;
-    quota_type: 'ingredient' | 'nutrition';
+    quota_type: 'nutrition';
     is_system: boolean;
 }
 
@@ -20,7 +20,7 @@ export interface QuotaProfileCreate {
     name: string;
     description?: string;
     quotas: Record<string, number>;
-    quota_type?: 'ingredient' | 'nutrition';
+    quota_type?: 'nutrition';
     is_system?: boolean;
 }
 
@@ -31,10 +31,9 @@ export interface DishCategory {
     count: number;
 }
 
-/** 量化食材 */
+/** 量化食材（无分类字段，仅含名称和克数） */
 export interface IngredientQuantified {
     name: string;
-    category: string;
     amount_g: number;
 }
 
@@ -100,6 +99,8 @@ export interface ContextOverview {
         start_date: string;
         end_date: string;
     };
+    /** 是否包含周末（默认 false，只排工作日） */
+    include_weekends: boolean;
 }
 
 /** 完整的排菜规则配置 */
@@ -167,7 +168,7 @@ export interface QuotaCompliance {
 export interface DailyQuotaUpdate {
     date: string;
     quota_compliance: QuotaCompliance[];
-    quota_type?: 'ingredient' | 'nutrition';
+    quota_type?: 'nutrition';
 }
 
 /** 核心指标汇总 */
