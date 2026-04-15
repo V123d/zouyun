@@ -46,6 +46,12 @@ CREATE TABLE standard_quotas (
 	PRIMARY KEY (id)
 );
 INSERT INTO standard_quotas (id, class_type, quotas, is_system, name, description, quota_type) VALUES(1,'幼儿园大班','{"calories": 1400, "protein": 30, "fat": 40, "carbs": 210}',true,'幼儿园大班营养摄入标准','基于中国居民膳食营养素参考摄入量，适用于5-6岁幼儿园大班儿童参考标准。每日总能量摄入参考值：卡路里1400kcal、蛋白质30g、脂肪40g、碳水化合物210g。','nutrition');
+INSERT INTO standard_quotas (id, class_type, name, description, quotas, quota_type, is_system) VALUES(2,'一类灶','一类灶（武警标准）','适用于武警部队一类伙食灶别，每日营养摄入参考标准', '{"大米": 420, "面粉": 180, "畜肉": 180, "禽肉": 60, "禽蛋": 70, "鱼虾": 90, "牛奶": 200, "大豆": 80, "蔗糖": 30, "植物油": 90, "鲜蔬菜": 750, "水果": 200, "食用菌(干)": 5, "干菜": 10}', 'ingredient', true);
+INSERT INTO standard_quotas (id, class_type, name, description, quotas, quota_type, is_system) VALUES(3,'二类灶','二类灶（武警标准）','适用于武警部队二类伙食灶别，每日营养摄入参考标准', '{"大米": 378.0, "面粉": 162.0, "畜肉": 162.0, "禽肉": 54.0, "禽蛋": 63.0, "鱼虾": 81.0, "牛奶": 180.0, "大豆": 72.0, "蔗糖": 27.0, "植物油": 81.0, "鲜蔬菜": 675.0, "水果": 180.0, "食用菌(干)": 4.5, "干菜": 9.0}', 'ingredient', true);
+INSERT INTO standard_quotas (id, class_type, name, description, quotas, quota_type, is_system) VALUES(4,'三类灶','三类灶（武警标准）','适用于武警部队三类伙食灶别，每日营养摄入参考标准', '{"大米": 336.0, "面粉": 144.0, "畜肉": 144.0, "禽肉": 48.0, "禽蛋": 56.0, "鱼虾": 72.0, "牛奶": 160.0, "大豆": 64.0, "蔗糖": 24.0, "植物油": 72.0, "鲜蔬菜": 600.0, "水果": 160.0, "食用菌(干)": 4.0, "干菜": 8.0}', 'ingredient', true);
+INSERT INTO standard_quotas (id, class_type, name, description, quotas, quota_type, is_system) VALUES(4,'营养值标准','营养值标准（参考）','基于中国居民膳食营养素参考摄入量，适用于轻体力成年男性参考标准。每日总能量摄入参考值：卡路里2400kcal、蛋白质75g、脂肪67g、碳水化合物360g。', '{"calories": 2400, "protein": 75, "fat": 67, "carbs": 360}', 'nutrition', true);
+INSERT INTO standard_quotas (id, class_type, quotas, is_system, name, description, quota_type) VALUES(5,'幼儿园大班','{"calories": 1400, "protein": 30, "fat": 40, "carbs": 210}',true,'幼儿园大班营养摄入标准','基于中国居民膳食营养素参考摄入量，适用于5-6岁幼儿园大班儿童参考标准。每日总能量摄入参考值：卡路里1400kcal、蛋白质30g、脂肪40g、碳水化合物210g。','nutrition');
+>>>>>>> 32c84ce
 CREATE TABLE users (
 	id INTEGER NOT NULL, 
 	username VARCHAR(50) NOT NULL, 
