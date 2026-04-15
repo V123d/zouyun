@@ -22,7 +22,7 @@ def _load_custom_categories() -> dict:
                 return json.load(f)
         except:
             pass
-    return {"dish_categories": [], "ingredient_categories": []}
+    return {"dish_categories": []}
 
 def _save_custom_categories(data: dict):
     """保存自定义分类配置"""
@@ -56,33 +56,15 @@ async def dishes_categories():
     return all_categories
 
 
-@router.get("/ingredient-categories")
-async def ingredient_categories():
-    """获取所有不重复的配料分类列表（含自定义分类）"""
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(select(Dish.ingredients_quantified))
-        ingredient_cats = set()
-        for row in result.all():
-            if row[0]:
-                for ing in row[0]:
-                    if isinstance(ing, dict) and ing.get("category"):
-                        ingredient_cats.add(ing["category"])
-
-    # 合并自定义分类
-    custom_data = _load_custom_categories()
-    all_categories = sorted(ingredient_cats | set(custom_data.get("ingredient_categories", [])))
-    return all_categories
-
-
 @router.post("/categories", status_code=status.HTTP_201_CREATED)
 async def add_category(category_type: str, category_name: str):
     """
-    添加新的菜品分类或配料分类
-    - category_type: "dish" 或 "ingredient"
+    添加新的菜品分类
+    - category_type: "dish"
     - category_name: 新分类名称
     """
-    if category_type not in ("dish", "ingredient"):
-        raise HTTPException(status_code=400, detail="category_type 必须是 'dish' 或 'ingredient'")
+    if category_type not in ("dish",):
+        raise HTTPException(status_code=400, detail="category_type 必须是 'dish'")
 
     if not category_name or not category_name.strip():
         raise HTTPException(status_code=400, detail="分类名称不能为空")
@@ -90,11 +72,7 @@ async def add_category(category_type: str, category_name: str):
     category_name = category_name.strip()
 
     custom_data = _load_custom_categories()
-
-    if category_type == "dish":
-        key = "dish_categories"
-    else:
-        key = "ingredient_categories"
+    key = "dish_categories"
 
     if category_name not in custom_data[key]:
         custom_data[key].append(category_name)
@@ -104,7 +82,7 @@ async def add_category(category_type: str, category_name: str):
 
 def _extract_and_save_categories(dish_data: dict):
     """
-    从菜品数据中提取菜品分类和配料分类，自动保存到自定义分类文件中。
+    从菜品数据中提取菜品分类，自动保存到自定义分类文件中。
     """
     custom_data = _load_custom_categories()
 
@@ -114,15 +92,6 @@ def _extract_and_save_categories(dish_data: dict):
         dish_category = dish_category.strip()
         if dish_category not in custom_data["dish_categories"]:
             custom_data["dish_categories"].append(dish_category)
-
-    # 提取配料分类
-    ingredients = dish_data.get("ingredients_quantified", [])
-    if ingredients:
-        for ing in ingredients:
-            if isinstance(ing, dict) and ing.get("category"):
-                ing_cat = ing["category"].strip()
-                if ing_cat and ing_cat not in custom_data["ingredient_categories"]:
-                    custom_data["ingredient_categories"].append(ing_cat)
 
     _save_custom_categories(custom_data)
 

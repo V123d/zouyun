@@ -7,11 +7,6 @@ import { getQuotaProfiles, updateQuotaProfile } from '../../services/api';
 import type { QuotaProfile } from '../../types';
 import QuotaEditor from '../quota-editor/QuotaEditor';
 
-const INGREDIENT_CATEGORIES = [
-    "大米", "面粉", "畜肉", "禽肉", "禽蛋", "鱼虾", "牛奶",
-    "大豆", "蔗糖", "植物油", "鲜蔬菜", "水果", "食用菌(干)", "干菜",
-];
-
 const NUTRITION_METRICS: { key: string; label: string; unit: string }[] = [
     { key: "calories", label: "卡路里", unit: "kcal/日" },
     { key: "protein", label: "蛋白质", unit: "g/日" },
@@ -50,7 +45,6 @@ export default function StandardQuotaManager() {
     }
 
     const currentProfile = profiles.find((q) => q.id === activeId);
-    const isNutritionProfile = currentProfile?.quota_type === "nutrition";
 
     useEffect(() => {
         if (currentProfile) {
@@ -153,18 +147,8 @@ export default function StandardQuotaManager() {
                                     <p className="text-[11px] text-text-muted mt-0.5">{currentProfile.description || '无描述'}</p>
                                 </div>
                                 <div className="ml-auto flex items-center gap-2">
-                                    <span
-                                        className={`text-[9px] px-2 py-0.5 rounded font-medium ${
-                                            isNutritionProfile
-                                                ? "bg-orange-100 text-orange-700"
-                                                : "bg-green-100 text-green-700"
-                                        }`}
-                                    >
-                                        {isNutritionProfile ? "营养值配额" : "配料分类配额"}
-                                    </span>
                                     <div className="text-[10px] bg-surface px-2 py-1 rounded border border-border-light text-text-muted">
-                                        共 {Object.keys(currentProfile.quotas).length}{" "}
-                                        {isNutritionProfile ? "项营养素" : "个类目"}
+                                        共 {Object.keys(currentProfile.quotas).length} 项营养素
                                     </div>
                                     {currentProfile.is_system ? (
                                         <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-1 rounded">系统内置</span>
@@ -175,8 +159,7 @@ export default function StandardQuotaManager() {
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {isNutritionProfile
-                                    ? NUTRITION_METRICS.map(({ key, label, unit }) => (
+                                {NUTRITION_METRICS.map(({ key, label, unit }) => (
                                           <div
                                               key={key}
                                               className="bg-white p-4 rounded-2xl border border-border-light shadow-sm hover:shadow-md transition-shadow group"
@@ -226,56 +209,6 @@ export default function StandardQuotaManager() {
                                                               const cap = capByKey[key] ?? 1;
                                                               return Math.min(100, v / cap);
                                                           })()}%`,
-                                                      }}
-                                                  />
-                                              </div>
-                                          </div>
-                                      ))
-                                    : INGREDIENT_CATEGORIES.map((cat: string) => (
-                                          <div
-                                              key={cat}
-                                              className="bg-white p-4 rounded-2xl border border-border-light shadow-sm hover:shadow-md transition-shadow group"
-                                          >
-                                              <div className="flex items-center justify-between mb-3">
-                                                  <div className="flex items-center gap-2">
-                                                      <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center group-hover:bg-primary-50 transition-colors">
-                                                          <Hash
-                                                              size={14}
-                                                              className="text-text-muted group-hover:text-primary-500"
-                                                          />
-                                                      </div>
-                                                      <span className="text-sm font-bold text-text-primary">{cat}</span>
-                                                  </div>
-                                                  <div className="flex items-center gap-1.5">
-                                                      <input
-                                                          type="number"
-                                                          min={0}
-                                                          step={0.1}
-                                                          value={
-                                                              localQuotas[cat] ??
-                                                              currentProfile.quotas[cat] ??
-                                                              0
-                                                          }
-                                                          onChange={(e) =>
-                                                              handleUpdateValue(cat, Number(e.target.value))
-                                                          }
-                                                          className="w-24 px-3 py-1.5 bg-surface border border-border rounded-lg text-sm text-right font-mono focus:border-primary-400 outline-none transition-all"
-                                                      />
-                                                      <span className="text-xs text-text-muted font-medium w-8">
-                                                          g/日
-                                                      </span>
-                                                  </div>
-                                              </div>
-                                              <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-                                                  <div
-                                                      className="h-full bg-primary-400 opacity-60 transition-all duration-500"
-                                                      style={{
-                                                          width: `${Math.min(
-                                                              100,
-                                                              (localQuotas[cat] ||
-                                                                  currentProfile.quotas[cat] ||
-                                                                  0) / 5
-                                                          )}%`,
                                                       }}
                                                   />
                                               </div>

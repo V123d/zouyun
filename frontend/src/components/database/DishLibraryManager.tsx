@@ -4,7 +4,7 @@ import {
     Filter, Info, Utensils, Flame
 } from 'lucide-react';
 import {
-    getDishLibrary, getDishCategories, getIngredientCategories,
+    getDishLibrary, getDishCategories,
     createDish, updateDish, deleteDish, addCategory
 } from '../../services/api';
 import type { DishInfo } from '../../types';
@@ -12,16 +12,13 @@ import type { DishInfo } from '../../types';
 export default function DishLibraryManager() {
     const [dishes, setDishes] = useState<DishInfo[]>([]);
     const [categories, setCategories] = useState<string[]>([]);
-    const [ingredientCategories, setIngredientCategories] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('全部');
 
     // 新增分类相关状态
     const [newDishCategory, setNewDishCategory] = useState('');
-    // const [newIngredientCategory, setNewIngredientCategory] = useState('');
     const [isAddingDishCategory, setIsAddingDishCategory] = useState(false);
-    // const [isAddingIngredientCategory, setIsAddingIngredientCategory] = useState(false);
 
     // 编辑相关状态
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,14 +32,12 @@ export default function DishLibraryManager() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [dishData, catData, ingCatData] = await Promise.all([
+            const [dishData, catData] = await Promise.all([
                 getDishLibrary(),
-                getDishCategories(),
-                getIngredientCategories()
+                getDishCategories()
             ]);
             setDishes(dishData);
             setCategories(['全部', ...catData]);
-            setIngredientCategories(ingCatData);
         } catch (error) {
             console.error('Failed to fetch dishes:', error);
         } finally {
@@ -56,7 +51,10 @@ export default function DishLibraryManager() {
         if (!trimmed) return;
         const success = await addCategory('dish', trimmed);
         if (success) {
-            setCategories(prev => [...prev.filter(c => c !== '全部'), trimmed].sort((a, b) => a.localeCompare(b, 'zh-CN')));
+            setCategories(prev => {
+                const filtered = prev.filter(c => c !== '全部');
+                return [...filtered, trimmed].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+            });
             if (editingDish) {
                 setEditingDish({ ...editingDish, category: trimmed });
             }
@@ -64,18 +62,6 @@ export default function DishLibraryManager() {
         setNewDishCategory('');
         setIsAddingDishCategory(false);
     };
-
-    // 添加新的配料分类
-    // const handleAddIngredientCategory = async () => {
-    //     const trimmed = newIngredientCategory.trim();
-    //     if (!trimmed) return;
-    //     const success = await addCategory('ingredient', trimmed);
-    //     if (success) {
-    //         setIngredientCategories(prev => [...prev, trimmed].sort((a, b) => a.localeCompare(b, 'zh-CN')));
-    //     }
-    //     setNewIngredientCategory('');
-    //     setIsAddingIngredientCategory(false);
-    // };
 
     const filteredDishes = useMemo(() => {
         return dishes.filter((dish: DishInfo) => {
@@ -360,7 +346,7 @@ export default function DishLibraryManager() {
                                                 key={meal}
                                                 onClick={() => {
                                                     const current = editingDish.applicable_meals || [];
-                                                    const next = current.includes(meal) 
+                                                    const next = current.includes(meal)
                                                         ? current.filter((m: string) => m !== meal)
                                                         : [...current, meal];
                                                     setEditingDish({ ...editingDish, applicable_meals: next });
@@ -390,7 +376,7 @@ export default function DishLibraryManager() {
                                             const current = editingDish.ingredients_quantified || [];
                                             setEditingDish({
                                                 ...editingDish,
-                                                ingredients_quantified: [...current, { name: '', category: '蔬菜', amount_g: 50 }]
+                                                ingredients_quantified: [...current, { name: '', amount_g: 50 }]
                                             });
                                         }}
                                         className="text-[10px] text-primary-600 hover:text-primary-700 font-bold flex items-center gap-0.5"
@@ -400,32 +386,106 @@ export default function DishLibraryManager() {
                                 </h4>
                                 <div className="space-y-2">
                                     {editingDish.ingredients_quantified?.map((ing: any, i: number) => (
-                                        <IngredientRow
-                                            key={i}
-                                            ing={ing}
-                                            allCategories={ingredientCategories}
-                                            onUpdate={(updated) => {
-                                                const next = [...editingDish.ingredients_quantified!];
-                                                next[i] = updated;
-                                                setEditingDish({ ...editingDish, ingredients_quantified: next });
-                                            }}
-                                            onRemove={() => {
-                                                const next = editingDish.ingredients_quantified!.filter((_: any, idx: number) => idx !== i);
-                                                setEditingDish({ ...editingDish, ingredients_quantified: next });
-                                            }}
-                                            onAddCategory={async (newCat: string) => {
-                                                const success = await addCategory('ingredient', newCat);
-                                                if (success) {
-                                                    setIngredientCategories(prev => [...prev, newCat].sort((a, b) => a.localeCompare(b, 'zh-CN')));
-                                                }
-                                            }}
-                                        />
+                                        <div key={i} className="flex items-center gap-2 group">
+                                            <input
+                                                type="text"
+                                                value={ing.name}
+                                                onChange={(e) => {
+                                                    const next = [...editingDish.ingredients_quantified!];
+                                                    next[i] = { ...next[i], name: e.target.value };
+                                                    setEditingDish({ ...editingDish, ingredients_quantified: next });
+                                                }}
+                                                placeholder="食材名"
+                                                className="flex-1 px-3 py-1.5 rounded-lg border border-border text-xs focus:border-primary-400 outline-none"
+                                            />
+                                            <input
+                                                type="number"
+                                                value={ing.amount_g}
+                                                onChange={(e) => {
+                                                    const next = [...editingDish.ingredients_quantified!];
+                                                    next[i] = { ...next[i], amount_g: Number(e.target.value) };
+                                                    setEditingDish({ ...editingDish, ingredients_quantified: next });
+                                                }}
+                                                className="w-20 px-3 py-1.5 rounded-lg border border-border text-xs text-center outline-none"
+                                            />
+                                            <span className="text-[10px] text-text-muted w-4">g</span>
+                                            <button
+                                                onClick={() => {
+                                                    const next = editingDish.ingredients_quantified!.filter((_: any, idx: number) => idx !== i);
+                                                    setEditingDish({ ...editingDish, ingredients_quantified: next });
+                                                }}
+                                                className="p-1.5 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
                                     ))}
                                     {editingDish.ingredients_quantified?.length === 0 && (
                                         <div className="text-center py-4 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-                                            <span className="text-[10px] text-text-muted">点击“添加食材”开始录入配方数据</span>
+                                            <span className="text-[10px] text-text-muted">点击"添加食材"开始录入配方数据</span>
                                         </div>
                                     )}
+                                </div>
+                            </div>
+
+                            {/* 营养素信息 */}
+                            <div>
+                                <h4 className="text-xs font-bold text-text-muted uppercase mb-3 flex items-center gap-1.5">
+                                    <Flame size={14} className="text-orange-400" />
+                                    营养素信息（每份）
+                                </h4>
+                                <div className="grid grid-cols-4 gap-3">
+                                    <div>
+                                        <label className="block text-[10px] text-text-muted mb-1">热量 (kcal)</label>
+                                        <input
+                                            type="number"
+                                            value={editingDish.nutrition?.calories ?? 0}
+                                            onChange={(e) => setEditingDish({
+                                                ...editingDish,
+                                                nutrition: { ...editingDish.nutrition!, calories: Number(e.target.value) }
+                                            })}
+                                            className="w-full px-3 py-1.5 rounded-lg border border-border text-xs text-center focus:border-primary-400 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] text-text-muted mb-1">蛋白质 (g)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            value={editingDish.nutrition?.protein ?? 0}
+                                            onChange={(e) => setEditingDish({
+                                                ...editingDish,
+                                                nutrition: { ...editingDish.nutrition!, protein: Number(e.target.value) }
+                                            })}
+                                            className="w-full px-3 py-1.5 rounded-lg border border-border text-xs text-center focus:border-primary-400 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] text-text-muted mb-1">碳水化合物 (g)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            value={editingDish.nutrition?.carbs ?? 0}
+                                            onChange={(e) => setEditingDish({
+                                                ...editingDish,
+                                                nutrition: { ...editingDish.nutrition!, carbs: Number(e.target.value) }
+                                            })}
+                                            className="w-full px-3 py-1.5 rounded-lg border border-border text-xs text-center focus:border-primary-400 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] text-text-muted mb-1">脂肪 (g)</label>
+                                        <input
+                                            type="number"
+                                            step="0.1"
+                                            value={editingDish.nutrition?.fat ?? 0}
+                                            onChange={(e) => setEditingDish({
+                                                ...editingDish,
+                                                nutrition: { ...editingDish.nutrition!, fat: Number(e.target.value) }
+                                            })}
+                                            className="w-full px-3 py-1.5 rounded-lg border border-border text-xs text-center focus:border-primary-400 outline-none"
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -434,7 +494,7 @@ export default function DishLibraryManager() {
                         <div className="px-6 py-4 border-t border-border-light bg-gray-50 flex items-center justify-between">
                             <div className="flex items-center gap-1.5 text-[10px] text-text-muted">
                                 <Info size={12} />
-                                所有字段均为必填，量化单位统一为“克 (g)”
+                                所有字段均为必填，量化单位统一为"克 (g)"
                             </div>
                             <div className="flex gap-3">
                                 <button
@@ -456,105 +516,6 @@ export default function DishLibraryManager() {
                     </div>
                 </div>
             )}
-        </div>
-    );
-}
-
-/** 食材行组件：支持配料分类的添加 */
-function IngredientRow({
-    ing,
-    allCategories,
-    onUpdate,
-    onRemove,
-    onAddCategory,
-}: {
-    ing: any;
-    allCategories: string[];
-    onUpdate: (updated: any) => void;
-    onRemove: () => void;
-    onAddCategory: (newCat: string) => void;
-}) {
-    const [isAddingCat, setIsAddingCat] = useState(false);
-    const [newCatName, setNewCatName] = useState('');
-
-    const handleAddCat = async () => {
-        const trimmed = newCatName.trim();
-        if (!trimmed) return;
-        await onAddCategory(trimmed);
-        onUpdate({ ...ing, category: trimmed });
-        setNewCatName('');
-        setIsAddingCat(false);
-    };
-
-    return (
-        <div className="flex items-center gap-2 group">
-            <input
-                type="text"
-                value={ing.name}
-                onChange={(e) => onUpdate({ ...ing, name: e.target.value })}
-                placeholder="食材名"
-                className="flex-1 px-3 py-1.5 rounded-lg border border-border text-xs focus:border-primary-400 outline-none"
-            />
-            {!isAddingCat ? (
-                <div className="flex items-center gap-1">
-                    <select
-                        value={ing.category}
-                        onChange={(e) => onUpdate({ ...ing, category: e.target.value })}
-                        className="w-24 px-2 py-1.5 rounded-lg border border-border text-xs outline-none"
-                    >
-                        {allCategories.map((c: string) => (
-                            <option key={c} value={c}>{c}</option>
-                        ))}
-                    </select>
-                    <button
-                        onClick={() => setIsAddingCat(true)}
-                        className="p-1 text-primary-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
-                        title="添加新分类"
-                    >
-                        <Plus size={12} />
-                    </button>
-                </div>
-            ) : (
-                <div className="flex items-center gap-1">
-                    <input
-                        type="text"
-                        autoFocus
-                        value={newCatName}
-                        onChange={(e) => setNewCatName(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleAddCat();
-                            if (e.key === 'Escape') { setIsAddingCat(false); setNewCatName(''); }
-                        }}
-                        placeholder="新分类"
-                        className="w-20 px-2 py-1.5 rounded-lg border border-accent-300 text-xs outline-none"
-                    />
-                    <button
-                        onClick={handleAddCat}
-                        className="p-1 bg-primary-600 text-white rounded hover:bg-primary-700"
-                    >
-                        <Save size={10} />
-                    </button>
-                    <button
-                        onClick={() => { setIsAddingCat(false); setNewCatName(''); }}
-                        className="p-1 text-text-muted hover:text-text-secondary rounded hover:bg-gray-100"
-                    >
-                        <X size={12} />
-                    </button>
-                </div>
-            )}
-            <input
-                type="number"
-                value={ing.amount_g}
-                onChange={(e) => onUpdate({ ...ing, amount_g: Number(e.target.value) })}
-                className="w-20 px-3 py-1.5 rounded-lg border border-border text-xs text-center outline-none"
-            />
-            <span className="text-[10px] text-text-muted w-4">g</span>
-            <button
-                onClick={onRemove}
-                className="p-1.5 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-            >
-                <X size={14} />
-            </button>
         </div>
     );
 }

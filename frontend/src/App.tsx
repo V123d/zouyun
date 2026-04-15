@@ -38,7 +38,7 @@ function App() {
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-sm">
             <span className="text-white text-sm">🍽️</span>
           </div>
-          <h1 className="text-sm font-bold text-text-primary tracking-wide">膳云AI营养排菜</h1>
+          <h1 className="text-sm font-bold text-text-primary tracking-wide">走云AI营养排菜</h1>
           <span className="text-xs text-text-muted hidden sm:inline">智能排菜 · 多智能体架构</span>
         </div>
         

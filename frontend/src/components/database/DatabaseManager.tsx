@@ -47,7 +47,7 @@ export default function DatabaseManager({ isOpen, onClose }: DatabaseManagerProp
                                 }`}
                             >
                                 <ClipboardCheck size={16} />
-                                灶别标准配置
+                                营养标准配置
                             </button>
                         </nav>
                     </div>

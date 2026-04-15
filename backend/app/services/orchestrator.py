@@ -138,7 +138,7 @@ async def node_check(state: dict) -> AsyncGenerator[str, None]:
 
     # 推送每日营养达标数据到前端（仅展示）
     quota_compliance = nutrition_result.get("quota_compliance", [])
-    quota_type = nutrition_result.get("quota_type", "ingredient")
+    quota_type = nutrition_result.get("quota_type", "nutrition")
     if quota_compliance:
         yield sse("daily_quota_update", {
             "date": date_str,
@@ -284,13 +284,16 @@ async def orchestrate_menu_stream(
         current_menu_json=current_menu_json,
         history=history or []
     )
-    include_weekends = False
+    # 优先使用表单配置中的 include_weekends，意图解析可以覆盖
+    include_weekends = config_data.context_overview.include_weekends
     regenerate_targets = []
 
     if intent_result.get("success"):
         parsed_intent = intent_result.get("parsed_intent", {})
         intent_summary = parsed_intent.get("summary", user_message)
-        include_weekends = parsed_intent.get("include_weekends", False)
+        # 意图解析返回 True 时覆盖配置值（用户临时要求包含周末）
+        if parsed_intent.get("include_weekends") is True:
+            include_weekends = True
 
         daily_overrides = parsed_intent.get("daily_overrides", {})
         meal_overrides = parsed_intent.get("meal_overrides", [])
@@ -715,7 +718,7 @@ async def orchestrate_menu_stream(
             "alert_count": final_check["metrics"].get("alert_count", 0),
             "quota_compliance": final_check["metrics"].get("quota_compliance", []),
         }
-        final_quota_type = final_check.get("quota_type", "ingredient")
+        final_quota_type = final_check.get("quota_type", "nutrition")
 
         final_alerts_readable = [
             f"[{a.get('type', '')}] {a.get('date', '')} "

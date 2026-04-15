@@ -14,4 +14,4 @@ class StandardQuota(Base):
     is_system = Column(Boolean, default=False)
     name = Column(String(100), nullable=True, default="")
     description = Column(String(500), nullable=True, default="")
-    quota_type = Column(String(20), nullable=True, default="ingredient")
+    quota_type = Column(String(20), nullable=True, default="nutrition")

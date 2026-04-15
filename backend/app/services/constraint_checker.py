@@ -96,7 +96,6 @@ async def _check_menu(menu: dict, config: Any, daily_configs: dict = None) -> di
 
     dish_index = {}
     standard_quotas_dict = {}
-    ingredient_usage = {}
     total_person_days = 0
 
     if dish_ids:
@@ -106,10 +105,10 @@ async def _check_menu(menu: dict, config: Any, daily_configs: dict = None) -> di
                 dish_index[d.id] = d.__dict__
 
             from ..models.standard_quota import StandardQuota
-            kitchen_class = "一类灶"
+            kitchen_class = "幼儿园大班"
             quota_profile_id = 1
             if isinstance(config, dict):
-                kitchen_class = config.get("context_overview", {}).get("kitchen_class", "一类灶")
+                kitchen_class = config.get("context_overview", {}).get("kitchen_class", "幼儿园大班")
                 quota_profile_id = config.get("context_overview", {}).get("quota_profile_id", 1)
             else:
                 kitchen_class = config.context_overview.kitchen_class
@@ -165,13 +164,6 @@ async def _check_menu(menu: dict, config: Any, daily_configs: dict = None) -> di
                     quantified = full.get("ingredients_quantified", [])
                     ingredients: list[str] = [i.get("name") for i in quantified if isinstance(i, dict)]
                     cost: float = float(full.get("cost_per_serving", 0))
-
-                    for quant in quantified:
-                        if isinstance(quant, dict):
-                            cat = quant.get("category") or quant.get("name")
-                            amt_g = float(quant.get("amount_g") or quant.get("amount") or quant.get("value") or 0)
-                            if cat and amt_g > 0:
-                                ingredient_usage[cat] = ingredient_usage.get(cat, 0.0) + (amt_g * diners)
 
                     for ingredient in ingredients:
                         if ingredient in red_lines:
@@ -302,70 +294,55 @@ async def _check_menu(menu: dict, config: Any, daily_configs: dict = None) -> di
     avg_nutrition = round(sum(nutrition_scores) / len(nutrition_scores), 1) if nutrition_scores else 0.0
 
     quota_compliance = []
-    quota_type = getattr(sq, 'quota_type', None) or "ingredient"
+    quota_type = getattr(sq, 'quota_type', None) or "nutrition"
 
     if standard_quotas_dict and total_person_days > 0:
-        if quota_type == "ingredient":
-            for cat_name, std_grams in standard_quotas_dict.items():
-                actual_total = ingredient_usage.get(cat_name, 0.0)
-                actual_per_person_day = actual_total / total_person_days
-                std_grams = float(std_grams)
-                if std_grams > 0:
-                    rate = actual_per_person_day / std_grams
-                    quota_compliance.append({
-                        "name": cat_name,
-                        "actual": round(actual_per_person_day, 1),
-                        "standard": round(std_grams, 1),
-                        "rate": round(rate, 2),
-                        "unit": "g",
-                    })
-        else:
-            nutrition_keys = ["calories", "protein", "fat", "carbs"]
-            nutrition_totals: dict[str, float] = {k: 0.0 for k in nutrition_keys}
-            nutrition_name_map = {
-                "calories": "卡路里",
-                "protein": "蛋白质",
-                "fat": "脂肪",
-                "carbs": "碳水化合物",
-            }
-            nutrition_unit_map = {
-                "calories": "kcal",
-                "protein": "g",
-                "fat": "g",
-                "carbs": "g",
-            }
+        nutrition_keys = ["calories", "protein", "fat", "carbs"]
+        nutrition_totals: dict[str, float] = {k: 0.0 for k in nutrition_keys}
+        nutrition_name_map = {
+            "calories": "卡路里",
+            "protein": "蛋白质",
+            "fat": "脂肪",
+            "carbs": "碳水化合物",
+        }
+        nutrition_unit_map = {
+            "calories": "kcal",
+            "protein": "g",
+            "fat": "g",
+            "carbs": "g",
+        }
 
-            for date, meals in menu.items():
-                if daily_configs and date in daily_configs:
-                    d_conf = daily_configs[date]
-                    d_list = d_conf.get("meals_config", []) if isinstance(d_conf, dict) else [m.model_dump() for m in d_conf.meals_config]
-                    d_meal_diners = {mc["meal_name"]: mc.get("diners_count", 1) for mc in d_list if mc.get("enabled", True)}
-                else:
-                    d_meal_diners = meal_diners
+        for date, meals in menu.items():
+            if daily_configs and date in daily_configs:
+                d_conf = daily_configs[date]
+                d_list = d_conf.get("meals_config", []) if isinstance(d_conf, dict) else [m.model_dump() for m in d_conf.meals_config]
+                d_meal_diners = {mc["meal_name"]: mc.get("diners_count", 1) for mc in d_list if mc.get("enabled", True)}
+            else:
+                d_meal_diners = meal_diners
 
-                for meal_name, categories in meals.items():
-                    diners = d_meal_diners.get(meal_name, 1)
-                    for cat_name, dishes in categories.items():
-                        for dish in dishes:
-                            dish_id = dish.get("id")
-                            full = dish_index.get(dish_id, dish) if dish_id else dish
-                            nutrition = full.get("nutrition", {})
-                            servings = float(dish.get("quantity") or 1) * diners
-                            for key in nutrition_keys:
-                                nutrition_totals[key] += float(nutrition.get(key, 0)) * servings
+            for meal_name, categories in meals.items():
+                diners = d_meal_diners.get(meal_name, 1)
+                for cat_name, dishes in categories.items():
+                    for dish in dishes:
+                        dish_id = dish.get("id")
+                        full = dish_index.get(dish_id, dish) if dish_id else dish
+                        nutrition = full.get("nutrition", {})
+                        servings = float(dish.get("quantity") or 1) * diners
+                        for key in nutrition_keys:
+                            nutrition_totals[key] += float(nutrition.get(key, 0)) * servings
 
-            for key in nutrition_keys:
-                std_val = float(standard_quotas_dict.get(key, 0))
-                if std_val > 0:
-                    actual_per_person_day = nutrition_totals[key] / total_person_days if total_person_days > 0 else 0
-                    rate = actual_per_person_day / std_val
-                    quota_compliance.append({
-                        "name": nutrition_name_map[key],
-                        "actual": round(actual_per_person_day, 1),
-                        "standard": round(std_val, 1),
-                        "rate": round(rate, 2),
-                        "unit": nutrition_unit_map[key],
-                    })
+        for key in nutrition_keys:
+            std_val = float(standard_quotas_dict.get(key, 0))
+            if std_val > 0:
+                actual_per_person_day = nutrition_totals[key] / total_person_days if total_person_days > 0 else 0
+                rate = actual_per_person_day / std_val
+                quota_compliance.append({
+                    "name": nutrition_name_map[key],
+                    "actual": round(actual_per_person_day, 1),
+                    "standard": round(std_val, 1),
+                    "rate": round(rate, 2),
+                    "unit": nutrition_unit_map[key],
+                })
 
     return {
         "success": True,
@@ -433,7 +410,7 @@ async def _check_daily_nutrition(
 
     dish_index: dict = {}
     standard_quotas_dict: dict = {}
-    quota_type: str = "ingredient"
+    quota_type: str = "nutrition"
 
     if dish_ids:
         async with AsyncSessionLocal() as session:
@@ -443,7 +420,7 @@ async def _check_daily_nutrition(
 
             from ..models.standard_quota import StandardQuota
             quota_profile_id = config_dict.get("context_overview", {}).get("quota_profile_id", 1)
-            kitchen_class = config_dict.get("context_overview", {}).get("kitchen_class", "一类灶")
+            kitchen_class = config_dict.get("context_overview", {}).get("kitchen_class", "幼儿园大班")
             sq_res = await session.execute(select(StandardQuota).where(StandardQuota.id == quota_profile_id))
             sq = sq_res.scalar_one_or_none()
             if not sq:
@@ -451,63 +428,33 @@ async def _check_daily_nutrition(
                 sq = sq_res.scalar_one_or_none()
             if sq:
                 standard_quotas_dict = sq.quotas
-                quota_type = getattr(sq, "quota_type", "ingredient")
+                quota_type = getattr(sq, "quota_type", "nutrition")
 
     if not standard_quotas_dict:
         return {"passed": True, "alerts": [], "quota_compliance": [], "quota_type": quota_type}
 
     quota_compliance: list[dict] = []
 
-    if quota_type == "ingredient":
-        ingredient_usage: dict[str, float] = {}
-        daily_diners = max(meal_diners.values()) if meal_diners else 1
+    daily_diners = max(meal_diners.values()) if meal_diners else 1
+    nutrition_keys = ["calories", "protein", "fat", "carbs"]
+    nutrition_totals: dict[str, float] = {k: 0.0 for k in nutrition_keys}
+    nutrition_name_map = {
+        "calories": "卡路里",
+        "protein": "蛋白质",
+        "fat": "脂肪",
+        "carbs": "碳水化合物",
+    }
+    nutrition_unit_map = {
+        "calories": "kcal",
+        "protein": "g",
+        "fat": "g",
+        "carbs": "g",
+    }
 
-        for meal_name, categories in day_menu.items():
-            diners = meal_diners.get(meal_name, 1)
-            for cat_name, dishes in categories.items():
-                for dish in dishes:
-                    dish_id = dish.get("id")
-                    full = dish_index.get(dish_id, dish) if dish_id else dish
-                    quantified = full.get("ingredients_quantified", [])
-                    for quant in quantified:
-                        if isinstance(quant, dict):
-                            cat = quant.get("category") or quant.get("name")
-                            amt_g = float(quant.get("amount_g") or quant.get("amount") or quant.get("value") or 0)
-                            if cat and amt_g > 0:
-                                ingredient_usage[cat] = ingredient_usage.get(cat, 0.0) + (amt_g * diners)
-            actual_total = ingredient_usage.get(cat_name, 0.0)
-            actual_per_person = actual_total / daily_diners if daily_diners > 0 else 0
-            std_grams_f = float(std_grams)
-            if std_grams_f > 0:
-                rate = actual_per_person / std_grams_f
-                quota_compliance.append({
-                    "name": cat_name,
-                    "actual": round(actual_per_person, 1),
-                    "standard": round(std_grams_f, 1),
-                    "rate": round(rate, 2),
-                    "unit": "g",
-                })
-    else:
-        daily_diners = max(meal_diners.values()) if meal_diners else 1
-        nutrition_keys = ["calories", "protein", "fat", "carbs"]
-        nutrition_totals: dict[str, float] = {k: 0.0 for k in nutrition_keys}
-        nutrition_name_map = {
-            "calories": "卡路里",
-            "protein": "蛋白质",
-            "fat": "脂肪",
-            "carbs": "碳水化合物",
-        }
-        nutrition_unit_map = {
-            "calories": "kcal",
-            "protein": "g",
-            "fat": "g",
-            "carbs": "g",
-        }
-
-        for meal_name, categories in day_menu.items():
-            diners = meal_diners.get(meal_name, 1)
-            for cat_name, dishes in categories.items():
-                for dish in dishes:
+    for meal_name, categories in day_menu.items():
+        diners = meal_diners.get(meal_name, 1)
+        for cat_name, dishes in categories.items():
+            for dish in dishes:
                     dish_id = dish.get("id")
                     full = dish_index.get(dish_id, dish) if dish_id else dish
                     nutrition = full.get("nutrition", {})
@@ -515,18 +462,19 @@ async def _check_daily_nutrition(
                     for key in nutrition_keys:
                         nutrition_totals[key] += float(nutrition.get(key, 0)) * servings
 
-        for key in nutrition_keys:
-            std_val = float(standard_quotas_dict.get(key, 0))
-            if std_val > 0:
-                actual_per_person = nutrition_totals[key] / daily_diners if daily_diners > 0 else 0
-                rate = actual_per_person / std_val
-                quota_compliance.append({
-                    "name": nutrition_name_map[key],
-                    "actual": round(actual_per_person, 1),
-                    "standard": round(std_val, 1),
-                    "rate": round(rate, 2),
-                    "unit": nutrition_unit_map[key],
-                })
+    # 营养素达标计算移到所有meal循环外部，避免重复计算
+    for key in nutrition_keys:
+        std_val = float(standard_quotas_dict.get(key, 0))
+        if std_val > 0:
+            actual_per_person = nutrition_totals[key] / daily_diners if daily_diners > 0 else 0
+            rate = actual_per_person / std_val
+            quota_compliance.append({
+                "name": nutrition_name_map[key],
+                "actual": round(actual_per_person, 1),
+                "standard": round(std_val, 1),
+                "rate": round(rate, 2),
+                "unit": nutrition_unit_map[key],
+            })
 
     return {
         "passed": True,

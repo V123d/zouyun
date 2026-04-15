@@ -77,10 +77,11 @@ class Schedule(BaseModel):
 
 class ContextOverview(BaseModel):
     """上下文概览"""
-    kitchen_class: str = "一类灶"
+    kitchen_class: str = "幼儿园大班"
     quota_profile_id: int = Field(default=1, description="选中的配额配置文件 ID，与 kitchen_class 对应")
     city: str = "广州市"
     schedule: Schedule
+    include_weekends: bool = Field(default=False, description="是否包含周末（默认 false，只排工作日）")
 
 
 class MenuPlanConfig(BaseModel):

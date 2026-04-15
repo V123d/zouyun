@@ -17,45 +17,91 @@ import type { HistoryRecord } from '../services/api';
 function createDefaultMealConfig(name: string, id: string): MealConfig {
     let budget = 100;
     let categories = [
-        { name: '猪肉类', count: 1 },
-        { name: '鸡鸭禽类', count: 1 },
-        { name: '鱼虾海鲜类', count: 1 },
-        { name: '蔬菜类', count: 2 },
-        { name: '豆制品类', count: 1 },
-        { name: '蛋类', count: 1 },
-        { name: '菌菇类', count: 1 },
-        { name: '面点类', count: 1 },
         { name: '主食', count: 1 },
-        { name: '水果类', count: 1 },
-        { name: '牛奶饮品类', count: 1 },
-        { name: '凉菜', count: 1 },
-        { name: '汤羹类', count: 1 },
+        { name: '蔬菜菜系', count: 2 },
+        { name: '猪肉菜系', count: 1 },
+        { name: '牛肉菜系', count: 1 },
+        { name: '鸡肉鸭肉菜系', count: 1 },
+        { name: '水产菜系', count: 1 },
+        { name: '排骨菜系', count: 1 },
+        { name: '豆腐菜系', count: 1 },
+        { name: '食堂凉菜', count: 1 },
+        { name: '煲汤菜系', count: 1 },
     ];
 
     if (name === '早餐') {
         budget = 50;
         categories = [
-            { name: '主食', count: 1 },
-            { name: '面点类', count: 2 },
-            { name: '蛋类', count: 1 },
-            { name: '咸菜腌菜类', count: 2 },
-            { name: '牛奶饮品类', count: 1 },
+            { name: '主食', count: 2 },
+            { name: '蔬菜菜系', count: 1 },
+            { name: '排骨菜系', count: 1 },
+            { name: '食堂凉菜', count: 1 },
         ];
+        // 个人菜品结构改为按标签配置
+        const personalCategories = [
+            { name: '主食', count: 1 },
+            { name: '素菜', count: 1 },
+            { name: '凉菜', count: 1 },
+        ];
+        return {
+            id,
+            meal_name: name,
+            enabled: true,
+            diners_count: 500,
+            intake_rate: 60,
+            budget_per_person: budget,
+            meal_specific_constraints: {
+                required_ingredients: [],
+                mandatory_dishes: [],
+                personal_dish_structure: { categories: personalCategories },
+            },
+            dish_structure: { categories },
+            staple_types: ['包子', '饺子', '馒头'],
+            soup_requirements: { description: '' },
+            flavor_preferences: '',
+        };
     } else if (name === '午餐' || name === '晚餐') {
         budget = 100;
         categories = [
-            { name: '猪肉类', count: 1 },
-            { name: '鸡鸭禽类', count: 1 },
-            { name: '鱼虾海鲜类', count: 1 },
-            { name: '蔬菜类', count: 2 },
-            { name: '豆制品类', count: 1 },
-            { name: '汤羹类', count: 1 },
-            { name: '水果类', count: 1 },
             { name: '主食', count: 1 },
+            { name: '蔬菜菜系', count: 2 },
+            { name: '猪肉菜系', count: 1 },
+            { name: '牛肉菜系', count: 1 },
+            { name: '鸡肉鸭肉菜系', count: 1 },
+            { name: '水产菜系', count: 1 },
+            { name: '排骨菜系', count: 1 },
+            { name: '豆腐菜系', count: 1 },
+            { name: '食堂凉菜', count: 1 },
+            { name: '煲汤菜系', count: 1 },
         ];
+        // 个人菜品结构改为按标签配置
+        const personalCategories = [
+            { name: '主食', count: 1 },
+            { name: '荤菜', count: 2 },
+            { name: '素菜', count: 2 },
+            { name: '凉菜', count: 1 },
+            { name: '汤类', count: 1 },
+        ];
+        return {
+            id,
+            meal_name: name,
+            enabled: true,
+            diners_count: 500,
+            intake_rate: 60,
+            budget_per_person: budget,
+            meal_specific_constraints: {
+                required_ingredients: [],
+                mandatory_dishes: [],
+                personal_dish_structure: { categories: personalCategories },
+            },
+            dish_structure: { categories },
+            staple_types: ['米饭'],
+            soup_requirements: { description: '' },
+            flavor_preferences: '',
+        };
     }
 
-    // 个人菜品结构默认值：从食堂菜品结构中提取分类名，生成对应的个人配置
+    // 默认配置（兜底）
     const personalCategories = categories.map(cat => ({
         name: cat.name,
         count: 1,
@@ -102,6 +148,7 @@ interface AppState {
     updateQuotaProfile: (profile_id: number, kitchen_class: string) => void;
     updateCity: (city: string) => void;
     updateSchedule: (start: string, end: string) => void;
+    updateIncludeWeekends: (include_weekends: boolean) => void;
     updateMealConfig: (mealId: string, updates: Partial<MealConfig>) => void;
     toggleMeal: (mealId: string) => void;
     addMeal: (name: string) => void;
@@ -160,9 +207,9 @@ interface AppState {
     /** 退出登录时重置所有排菜相关状态 */
     resetAll: () => void;
 
-    /** 当前配额类型（ingredient=配料分类, nutrition=营养素） */
-    currentQuotaType: 'ingredient' | 'nutrition';
-    setCurrentQuotaType: (qt: 'ingredient' | 'nutrition') => void;
+    /** 当前配额类型（nutrition=营养素） */
+    currentQuotaType: 'nutrition';
+    setCurrentQuotaType: (qt: 'nutrition') => void;
 
     /** 每日营养配额达标数据 { date: quota_compliance[] } */
     dailyQuotaCompliance: Record<string, QuotaCompliance[]>;
@@ -175,10 +222,11 @@ const schedule = getNextWeekRange();
 export const useAppStore = create<AppState>((set) => ({
     config: {
         context_overview: {
-            kitchen_class: '幼儿园大班营养摄入标准',
-            quota_profile_id: 4,
+            kitchen_class: '幼儿园大班',
+            quota_profile_id: 1,
             city: '春天花花幼儿园',
             schedule,
+            include_weekends: false,
         },
         global_hard_constraints: {
             red_lines: [],
@@ -233,6 +281,14 @@ export const useAppStore = create<AppState>((set) => ({
             config: {
                 ...s.config,
                 context_overview: { ...s.config.context_overview, schedule: { start_date, end_date } },
+            },
+        })),
+
+    updateIncludeWeekends: (include_weekends: boolean) =>
+        set((s) => ({
+            config: {
+                ...s.config,
+                context_overview: { ...s.config.context_overview, include_weekends },
             },
         })),
 
@@ -295,7 +351,7 @@ export const useAppStore = create<AppState>((set) => ({
             id: 'welcome',
             role: 'assistant',
             content:
-                '您好！我是膳云AI营养排菜助手 🍽️ 请告诉我您的排餐需求，例如：\n\n"帮我排下周一到周五的菜单，要求严格控制大荤成本，并规避海鲜过敏原。"',
+                '您好！我是走云AI营养排菜助手 🍽️ 请告诉我您的排餐需求，例如：\n\n"帮我排下周一到周五的菜单，要求严格控制大荤成本，并规避海鲜过敏原。"',
             timestamp: Date.now(),
         },
     ],
@@ -371,7 +427,7 @@ export const useAppStore = create<AppState>((set) => ({
                 id: 'welcome',
                 role: 'assistant',
                 content:
-                    '您好！我是膳云AI营养排菜助手 🍽️ 请告诉我您的排餐需求，例如：\n\n"帮我排下周一到周五的菜单，要求严格控制大荤成本，并规避海鲜过敏原。"',
+                    '您好！我是走云AI营养排菜助手 🍽️ 请告诉我您的排餐需求，例如：\n\n"帮我排下周一到周五的菜单，要求严格控制大荤成本，并规避海鲜过敏原。"',
                 timestamp: Date.now(),
             },
         ],
@@ -384,11 +440,11 @@ export const useAppStore = create<AppState>((set) => ({
         isGenerating: false,
         abortController: null,
         dailyQuotaCompliance: {},
-        currentQuotaType: 'ingredient',
+        currentQuotaType: 'nutrition',
     }),
 
     // 当前配额类型
-    currentQuotaType: 'ingredient',
+    currentQuotaType: 'nutrition',
     setCurrentQuotaType: (qt) => set({ currentQuotaType: qt }),
 
     // 每日营养配额达标数据

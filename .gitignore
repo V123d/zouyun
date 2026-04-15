@@ -16,9 +16,6 @@ node_modules/
 backend/logs/*.log
 backend/logs/prompts/*.txt
 
-# Database (local dev)
-backend/app/data/*.db
-
 # IDE
 .vscode/
 .idea/

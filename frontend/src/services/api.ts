@@ -207,19 +207,8 @@ export async function getDishCategories(): Promise<string[]> {
     }
 }
 
-/** 获取所有配料分类 */
-export async function getIngredientCategories(): Promise<string[]> {
-    try {
-        const res = await fetchWithAuth(`${API_BASE}/dishes/ingredient-categories`);
-        if (!res.ok) throw new Error('获取配料分类失败');
-        return await res.json();
-    } catch {
-        return [];
-    }
-}
-
-/** 添加新的菜品分类或配料分类 */
-export async function addCategory(categoryType: 'dish' | 'ingredient', categoryName: string): Promise<boolean> {
+/** 获取所有菜品分类 */
+export async function addCategory(categoryType: 'dish', categoryName: string): Promise<boolean> {
     try {
         const res = await fetchWithAuth(`${API_BASE}/dishes/categories`, {
             method: 'POST',
