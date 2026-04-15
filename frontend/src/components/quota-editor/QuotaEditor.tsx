@@ -29,7 +29,6 @@ const NUTRITION_KEYS = [
     { key: 'carbs', label: '碳水化合物', unit: 'g', defaultVal: 360 },
 ];
 
-type QuotaType = 'nutrition';
 
 export default function QuotaEditor({ onClose, initialProfileId, onSave }: QuotaEditorProps) {
     const [profiles, setProfiles] = useState<QuotaProfile[]>([]);

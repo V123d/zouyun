@@ -93,7 +93,7 @@ export default function ConfigDrawer() {
                 missingTags.forEach(tag => {
                     if (!personalNames.has(tag)) {
                         newPersonalCategories.push({ name: tag, count: 1 });
-                        console.log(`初始化补充标签 '${tag}' 到 ${meal.name} 的个人配置`);
+                        console.log(`初始化补充标签 '${tag}' 到 ${meal.meal_name} 的个人配置`);
                     }
                 });
                 
