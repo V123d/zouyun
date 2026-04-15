@@ -173,7 +173,7 @@ export default function AgentChat() {
             // onDailyQuotaUpdate: 每日营养配额达标数据（仅展示）
             (date, quotaCompliance, quotaType) => {
                 setDailyQuotaCompliance(date, quotaCompliance);
-                if (quotaType) setCurrentQuotaType(quotaType);
+                if (quotaType) setCurrentQuotaType(quotaType as 'nutrition');
             },
             controller.signal
         );

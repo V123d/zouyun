@@ -29,7 +29,6 @@ const NUTRITION_KEYS = [
     { key: 'carbs', label: '碳水化合物', unit: 'g', defaultVal: 360 },
 ];
 
-type QuotaType = 'nutrition';
 
 export default function QuotaEditor({ onClose, initialProfileId, onSave }: QuotaEditorProps) {
     const [profiles, setProfiles] = useState<QuotaProfile[]>([]);
@@ -111,27 +110,6 @@ export default function QuotaEditor({ onClose, initialProfileId, onSave }: Quota
         });
         setNutritionForm(nf);
         setEditMode('edit');
-        setError('');
-    }
-
-    function startDuplicate() {
-        const profile = profiles.find(p => p.id === selectedId);
-        if (!profile) return;
-        setEditForm({
-            class_type: '',
-            name: profile.name + ' (副本)',
-            description: profile.description,
-            quotas: { ...profile.quotas },
-            quota_type: 'nutrition',
-            is_system: false,
-        });
-        const nf: Record<string, string> = {};
-        NUTRITION_KEYS.forEach(({ key, defaultVal }) => {
-            const v = profile.quotas[key];
-            nf[key] = String(v != null ? v : defaultVal);
-        });
-        setNutritionForm(nf);
-        setEditMode('create');
         setError('');
     }
 

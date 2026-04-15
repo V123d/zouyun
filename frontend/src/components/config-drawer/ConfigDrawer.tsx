@@ -11,7 +11,7 @@ import {
     Settings,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/app-store';
-import type { MealConfig, DishCategory, QuotaProfile } from '../../types';
+import type { MealConfig, DishCategory } from '../../types';
 import { getDishCategories, getQuotaProfiles } from '../../services/api';
 import QuotaEditor from '../quota-editor/QuotaEditor';
 
@@ -93,7 +93,7 @@ export default function ConfigDrawer() {
                 missingTags.forEach(tag => {
                     if (!personalNames.has(tag)) {
                         newPersonalCategories.push({ name: tag, count: 1 });
-                        console.log(`初始化补充标签 '${tag}' 到 ${meal.name} 的个人配置`);
+                        console.log(`初始化补充标签 '${tag}' 到 ${meal.meal_name} 的个人配置`);
                     }
                 });
                 
